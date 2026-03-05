@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/screens/login_screen.dart';
 import 'package:fsdmovil/screens/register_screen.dart';
-import 'package:fsdmovil/screens/home_screen.dart';
+import 'package:fsdmovil/screens/dashboard_screen.dart';
 
 Page<void> _slideTransition(
   BuildContext context,
@@ -50,7 +50,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/home',
       pageBuilder: (context, state) =>
-          _slideTransition(context, state, const HomeScreen()),
+          _slideTransition(context, state, const DashboardScreen()),
     ),
   ],
 );

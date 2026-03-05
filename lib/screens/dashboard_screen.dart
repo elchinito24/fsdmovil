@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/providers/auth_provider.dart';
 
-class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key});
+class DashboardScreen extends ConsumerWidget {
+  const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -21,9 +21,7 @@ class HomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: const Center(
-        child: Text('Bienvenido a fsdmovil'),
-      ),
+      body: const Center(child: Text('Bienvenido a fsdmovil')),
     );
   }
 }
