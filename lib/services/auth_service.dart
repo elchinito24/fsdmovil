@@ -1,3 +1,4 @@
+import 'package:fsdmovil/config/api_routes.dart';
 import 'package:fsdmovil/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,10 +7,10 @@ class AuthService {
 
   /// Login: devuelve el token si es exitoso
   static Future<String?> login(String email, String password) async {
-    final response = await ApiService.dio.post('/auth/login', data: {
-      'email': email,
-      'password': password,
-    });
+    final response = await ApiService.dio.post(
+      ApiRoutes.authLogin,
+      data: {'email': email, 'password': password},
+    );
     final token = response.data['token'] as String?;
     if (token != null) {
       await _saveToken(token);

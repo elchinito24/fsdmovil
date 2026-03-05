@@ -113,7 +113,7 @@ q   → Quit
 
 ```bash
 # Reemplaza TU_URL_AQUI por tu URL real de producción
-flutter build appbundle --dart-define=API_URL=https://TU_URL_AQUI   # Android (Play Store)
+flutter build appbundle --dart-define=API_URL=https://TU_URL_AQUI    # Android (Play Store)
 flutter build apk --dart-define=API_URL=https://TU_URL_AQUI          # Android (APK directo)
 flutter build web --dart-define=API_URL=https://TU_URL_AQUI          # Web
 flutter build windows --dart-define=API_URL=https://TU_URL_AQUI      # Windows
