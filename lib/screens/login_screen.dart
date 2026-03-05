@@ -28,16 +28,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _loading = true;
       _error = null;
     });
-    final success = await ref
+    final error = await ref
         .read(authProvider.notifier)
-        .login(_emailCtrl.text.trim(), _passwordCtrl.text);
+        .login(_emailCtrl.text, _passwordCtrl.text);
     if (!mounted) return;
-    setState(() => _loading = false);
-    if (success) {
-      context.go('/home');
-    } else {
-      setState(() => _error = 'Credenciales incorrectas');
+    if (error != null) {
+      setState(() {
+        _loading = false;
+        _error = error;
+      });
+      return;
     }
+    context.go('/home');
   }
 
   @override
@@ -53,18 +55,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               // Logo
               Row(
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: _pink,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.bookmark,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                  Image.asset(
+                    'assets/images/logo_transparente.png',
+                    width: 50,
+                    height: 50,
                   ),
                   const SizedBox(width: 10),
                   const Text(

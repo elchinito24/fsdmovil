@@ -19,6 +19,30 @@ class AuthService {
     return token;
   }
 
+  /// Register: devuelve el token si el registro fue exitoso
+  static Future<String?> register(
+    String firstName,
+    String lastName,
+    String email,
+    String password,
+  ) async {
+    final response = await ApiService.dio.post(
+      ApiRoutes.authRegister,
+      data: {
+        'firstName': firstName,
+        'lastName': lastName,
+        'email': email,
+        'password': password,
+      },
+    );
+    final token = response.data['token'] as String?;
+    if (token != null) {
+      await _saveToken(token);
+      ApiService.setAuthToken(token);
+    }
+    return token;
+  }
+
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);

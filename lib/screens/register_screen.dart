@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+// lib/providers: auth_provider.dart (Logica de autenticación y estado global)
+import 'package:fsdmovil/providers/auth_provider.dart';
+
+// lib/services: auth_service.dart (Comunicación con API para login/registro)
+// import 'package:fsdmovil/services/auth_service.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF1C1C1E);
@@ -8,14 +15,14 @@ const _textGrey = Color(0xFF8E8E93);
 
 enum _PasswordStrength { none, weak, fair, good, strong }
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -39,26 +46,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _submit() async {
-    if (_firstNameCtrl.text.trim().isEmpty ||
-        _lastNameCtrl.text.trim().isEmpty ||
-        _emailCtrl.text.trim().isEmpty ||
-        _passwordCtrl.text.isEmpty) {
-      setState(() => _error = 'Por favor completa todos los campos');
-      return;
-    }
     setState(() {
       _loading = true;
       _error = null;
     });
-    // TODO: conectar con el servicio de registro
-    await Future.delayed(const Duration(seconds: 1));
+    final error = await ref
+        .read(authProvider.notifier)
+        .register(
+          _firstNameCtrl.text,
+          _lastNameCtrl.text,
+          _emailCtrl.text,
+          _passwordCtrl.text,
+        );
     if (!mounted) return;
-    setState(() => _loading = false);
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go('/login');
+    if (error != null) {
+      setState(() {
+        _loading = false;
+        _error = error;
+      });
+      return;
     }
+    context.go('/home');
   }
 
   Color _strengthColor(_PasswordStrength s) {
@@ -117,42 +125,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header: logo + Sign In instead
+              // Header: logo
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: _pink,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.bookmark,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'FSD',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+                  Image.asset(
+                    'assets/images/logo_transparente.png',
+                    width: 50,
+                    height: 50,
                   ),
-                  GestureDetector(
-                    onTap: () =>
-                        context.canPop() ? context.pop() : context.go('/login'),
-                    child: const Text(
-                      'Sign In instead',
-                      style: TextStyle(color: _textGrey, fontSize: 14),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'FSD',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
