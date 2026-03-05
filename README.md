@@ -29,7 +29,7 @@ Sistema web tipo SPA (Single Page Application) diseñado para cubrir de manera i
 | `go_router` | Navegación SPA |
 | `dio` | Peticiones HTTP al backend |
 | `shared_preferences` | Persistencia del token JWT |
-| `flutter_dotenv` | Variables de entorno |
+| `--dart-define` | Variables de entorno (compiladas en el binario) |
 
 ---
 
@@ -56,11 +56,19 @@ lib/
 
 ## Configuración inicial
 
-Antes de correr la app, actualiza la URL del backend en `lib/config/app_config.dart`:
-
-```dart
-static const String baseUrl = 'http://localhost:3000/api'; // tu backend local
+1. Copia `.vscode/launch.json.example` a `.vscode/launch.json`:
+```bash
+copy .vscode\launch.json.example .vscode\launch.json
 ```
+
+2. Abre `.vscode/launch.json` y reemplaza la URL por la de tu backend:
+```json
+"--dart-define=API_URL=https://tuapi.com"
+```
+
+3. Corre la app desde VS Code usando la configuración **fsdmovil (dev)** o **fsdmovil (prod)**.
+
+> ⚠️ `launch.json` está en `.gitignore` — nunca se sube a GitHub. Cada miembro del equipo configura su propia URL.
 
 ---
 
@@ -71,17 +79,25 @@ static const String baseUrl = 'http://localhost:3000/api'; // tu backend local
 flutter pub get
 ```
 
-### Correr la app
-```bash
-# Web (recomendado para SPA)
-flutter run -d chrome
+### Correr la app (desarrollo)
 
-# Windows desktop
-flutter run -d windows
+**Forma recomendada — VS Code (F5):**
+1. Asegúrate de tener tu URL configurada en `.vscode/launch.json`
+2. Selecciona el dispositivo en la barra inferior de VS Code
+3. Presiona **F5** (o selecciona la configuración en el panel de Run & Debug)
+
+VS Code lee automáticamente el `launch.json`, compila con tu `API_URL` y lanza la app en el dispositivo. La URL queda **compilada dentro del binario** — aunque desconectes el teléfono o cierres VS Code, la app sigue apuntando a ese backend.
+
+**Desde terminal** (la URL NO se toma del `launch.json`, debes escribirla manualmente):
+```bash
+flutter run -d chrome --dart-define=API_URL=https://TU_URL_AQUI
+flutter run -d android --dart-define=API_URL=https://TU_URL_AQUI
 
 # Ver todos los dispositivos disponibles
 flutter devices
 ```
+
+> ⚠️ Si corres `flutter run` sin `--dart-define`, la app usará el valor por defecto `http://10.0.2.2:3000` (solo funciona en emulador Android apuntando a tu PC local).
 
 ### Hot Reload / Hot Restart (en la terminal donde corre la app)
 ```
@@ -92,10 +108,19 @@ q   → Quit
 > En VS Code: **Ctrl+S** dispara hot reload automáticamente.
 
 ### Build para producción
+
+> ⚠️ **`--dart-define=API_URL=...` es obligatorio en builds de producción.** Si no lo incluyes, el binario quedará apuntando a `http://10.0.2.2:3000` (emulador local) y la app no funcionará en producción.
+
 ```bash
-flutter build web       # Web
-flutter build windows   # Windows
+# Reemplaza TU_URL_AQUI por tu URL real de producción
+flutter build appbundle --dart-define=API_URL=https://TU_URL_AQUI   # Android (Play Store)
+flutter build apk --dart-define=API_URL=https://TU_URL_AQUI          # Android (APK directo)
+flutter build web --dart-define=API_URL=https://TU_URL_AQUI          # Web
+flutter build windows --dart-define=API_URL=https://TU_URL_AQUI      # Windows
 ```
+
+El archivo para subir a Google Play Console es el `.aab` generado en:
+`build/app/outputs/bundle/release/app-release.aab`
 
 ### Gestión de dependencias
 ```bash
