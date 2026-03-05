@@ -37,19 +37,21 @@ Sistema web tipo SPA (Single Page Application) diseñado para cubrir de manera i
 
 ```
 lib/
-├── main.dart                  # Entry point con ProviderScope
+├── main.dart                     # Entry point con ProviderScope
 ├── config/
-│   └── app_config.dart        # URL base del backend y timeouts
+│   ├── app_config.dart           # URL base del backend y timeouts
+│   └── api_routes.dart           # Endpoints centralizados de la API
 ├── providers/
-│   └── auth_provider.dart     # Estado de autenticación (Riverpod)
+│   └── auth_provider.dart        # Estado de autenticación (Riverpod)
 ├── router/
-│   └── app_router.dart        # Rutas /login y /home (GoRouter)
+│   └── app_router.dart           # Rutas /login, /register y /dashboard con animaciones slide
 ├── screens/
-│   ├── login_screen.dart      # Pantalla de login
-│   └── home_screen.dart       # Pantalla principal
+│   ├── login_screen.dart         # Pantalla de login
+│   ├── register_screen.dart      # Pantalla de registro
+│   └── dashboard_screen.dart     # Dashboard principal (post-login)
 └── services/
-    ├── api_service.dart        # Cliente HTTP con Dio + JWT
-    └── auth_service.dart       # Login, logout y token local
+    ├── api_service.dart           # Cliente HTTP con Dio + JWT
+    └── auth_service.dart          # Login, registro, logout y token local
 ```
 
 ---

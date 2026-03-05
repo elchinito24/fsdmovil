@@ -39,7 +39,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       });
       return;
     }
-    context.go('/home');
+    context.go('/dashboard');
   }
 
   @override

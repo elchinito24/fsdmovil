@@ -66,7 +66,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       });
       return;
     }
-    context.go('/home');
+    context.go('/dashboard');
   }
 
   Color _strengthColor(_PasswordStrength s) {

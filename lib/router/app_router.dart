@@ -48,7 +48,7 @@ final appRouter = GoRouter(
           _slideTransition(context, state, const RegisterScreen()),
     ),
     GoRoute(
-      path: '/home',
+      path: '/dashboard',
       pageBuilder: (context, state) =>
           _slideTransition(context, state, const DashboardScreen()),
     ),
