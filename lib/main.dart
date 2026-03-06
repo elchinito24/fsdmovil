@@ -23,8 +23,12 @@ class MyApp extends StatelessWidget {
         title: 'FSD',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
           useMaterial3: true,
+          scaffoldBackgroundColor: const Color(0xFF1C1C1E),
+          colorScheme: const ColorScheme.dark(
+            primary: Color(0xFFE8365D),
+            surface: Color(0xFF1C1C1E),
+          ),
         ),
         routerConfig: appRouter,
       ),
