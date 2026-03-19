@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-// lib/providers: auth_provider.dart (Logica de autenticación y estado global)
 import 'package:fsdmovil/providers/auth_provider.dart';
-
-// lib/services: auth_service.dart (Comunicación con API para login/registro)
-// import 'package:fsdmovil/services/auth_service.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF1C1C1E);
@@ -27,7 +22,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _lastNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _confirmPasswordCtrl = TextEditingController();
+
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   bool _loading = false;
   String? _error;
   _PasswordStrength _passwordStrength = _PasswordStrength.none;
@@ -46,19 +44,43 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+
+    if (_firstNameCtrl.text.trim().isEmpty ||
+        _lastNameCtrl.text.trim().isEmpty ||
+        _emailCtrl.text.trim().isEmpty ||
+        _passwordCtrl.text.isEmpty ||
+        _confirmPasswordCtrl.text.isEmpty) {
+      setState(() {
+        _error = 'Please complete all fields.';
+      });
+      return;
+    }
+
+    if (_passwordCtrl.text != _confirmPasswordCtrl.text) {
+      setState(() {
+        _error = 'Passwords do not match.';
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
+
     final error = await ref
         .read(authProvider.notifier)
         .register(
-          _firstNameCtrl.text,
-          _lastNameCtrl.text,
-          _emailCtrl.text,
-          _passwordCtrl.text,
+          firstName: _firstNameCtrl.text.trim(),
+          lastName: _lastNameCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          password: _passwordCtrl.text,
+          passwordConfirm: _confirmPasswordCtrl.text,
         );
+
     if (!mounted) return;
+
     if (error != null) {
       setState(() {
         _loading = false;
@@ -66,7 +88,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       });
       return;
     }
-    context.go('/dashboard');
+
+    setState(() {
+      _loading = false;
+    });
+
+    context.go('/login');
   }
 
   Color _strengthColor(_PasswordStrength s) {
@@ -112,12 +139,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   );
 
   @override
+  void dispose() {
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final strengthColor = _strengthColor(_passwordStrength);
     final strengthLabel = _strengthLabel(_passwordStrength);
     final strengthValue = _passwordStrength.index / 4.0;
 
     return Scaffold(
+      backgroundColor: _darkBg,
       body: Container(
         decoration: const BoxDecoration(
           gradient: RadialGradient(
@@ -128,288 +166,323 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
         ),
         child: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header: logo
-              Row(
-                children: [
-                  Image.asset(
-                    'assets/images/logo_transparente.png',
-                    width: 50,
-                    height: 50,
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'FSD',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Image.asset(
+                      'assets/images/logo_transparente.png',
+                      width: 50,
+                      height: 50,
                     ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'FSD',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 36),
+
+                const Text(
+                  'Start documenting',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 30,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Text(
+                  'better',
+                  style: TextStyle(
+                    color: _pink,
+                    fontSize: 30,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Join FSD, the premium SRS documentation platform.',
+                  style: TextStyle(color: _textGrey, fontSize: 14),
+                ),
+                const SizedBox(height: 32),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'First Name',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _firstNameCtrl,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: _fieldDecoration('First Name'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Last Name',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _lastNameCtrl,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: _fieldDecoration('Last Name'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                const Text(
+                  'Email',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _fieldDecoration('name@company.com'),
+                ),
+                const SizedBox(height: 20),
+
+                const Text(
+                  'Password',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _passwordCtrl,
+                  obscureText: _obscurePassword,
+                  style: const TextStyle(color: Colors.white),
+                  onChanged: (v) =>
+                      setState(() => _passwordStrength = _evaluateStrength(v)),
+                  decoration: InputDecoration(
+                    hintText: '••••••••',
+                    hintStyle: const TextStyle(color: _textGrey),
+                    filled: true,
+                    fillColor: _fieldBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: _textGrey,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
+                    ),
+                  ),
+                ),
+
+                if (_passwordStrength != _PasswordStrength.none) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: strengthValue,
+                      minHeight: 4,
+                      backgroundColor: const Color(0xFF3A3A3C),
+                      valueColor: AlwaysStoppedAnimation<Color>(strengthColor),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    strengthLabel,
+                    style: TextStyle(color: strengthColor, fontSize: 12),
                   ),
                 ],
-              ),
-              const SizedBox(height: 36),
 
-              // Título
-              const Text(
-                'Start documenting',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Text(
-                'better',
-                style: TextStyle(
-                  color: _pink,
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Join FSD, the premium SRS documentation platform.',
-                style: TextStyle(color: _textGrey, fontSize: 14),
-              ),
-              const SizedBox(height: 32),
+                const SizedBox(height: 20),
 
-              // First Name + Last Name (dos columnas)
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'First Name',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _firstNameCtrl,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: _fieldDecoration('First Name'),
-                        ),
-                      ],
+                const Text(
+                  'Confirm Password',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _confirmPasswordCtrl,
+                  obscureText: _obscureConfirmPassword,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: '••••••••',
+                    hintStyle: const TextStyle(color: _textGrey),
+                    filled: true,
+                    fillColor: _fieldBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: _textGrey,
+                      ),
+                      onPressed: () => setState(
+                        () =>
+                            _obscureConfirmPassword = !_obscureConfirmPassword,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Last Name',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _lastNameCtrl,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: _fieldDecoration('Last Name'),
-                        ),
-                      ],
-                    ),
+                ),
+
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: _pink, fontSize: 13),
                   ),
                 ],
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 28),
 
-              // Email
-              const Text(
-                'Email',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _emailCtrl,
-                keyboardType: TextInputType.emailAddress,
-                style: const TextStyle(color: Colors.white),
-                decoration: _fieldDecoration('name@company.com'),
-              ),
-              const SizedBox(height: 20),
-
-              // Password
-              const Text(
-                'Password',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _passwordCtrl,
-                obscureText: _obscurePassword,
-                style: const TextStyle(color: Colors.white),
-                onChanged: (v) =>
-                    setState(() => _passwordStrength = _evaluateStrength(v)),
-                decoration: InputDecoration(
-                  hintText: '••••••••',
-                  hintStyle: const TextStyle(color: _textGrey),
-                  filled: true,
-                  fillColor: _fieldBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
-                  ),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: _textGrey,
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _loading ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _pink,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
                     ),
-                    onPressed: () =>
-                        setState(() => _obscurePassword = !_obscurePassword),
-                  ),
-                ),
-              ),
-
-              // Barra de fuerza de contraseña
-              if (_passwordStrength != _PasswordStrength.none) ...[
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: strengthValue,
-                    minHeight: 4,
-                    backgroundColor: const Color(0xFF3A3A3C),
-                    valueColor: AlwaysStoppedAnimation<Color>(strengthColor),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  strengthLabel,
-                  style: TextStyle(color: strengthColor, fontSize: 12),
-                ),
-              ],
-
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: const TextStyle(color: _pink, fontSize: 13),
-                ),
-              ],
-              const SizedBox(height: 28),
-
-              // Botón Create Account
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _pink,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _loading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
+                    child: _loading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Create Account',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        )
-                      : const Text(
-                          'Create Account',
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                Center(
+                  child: GestureDetector(
+                    onTap: () =>
+                        context.canPop() ? context.pop() : context.go('/login'),
+                    child: RichText(
+                      text: const TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'Already have an account? ',
+                            style: TextStyle(color: _textGrey, fontSize: 14),
+                          ),
+                          TextSpan(
+                            text: 'Login',
+                            style: TextStyle(
+                              color: _pink,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                Center(
+                  child: RichText(
+                    textAlign: TextAlign.center,
+                    text: const TextSpan(
+                      style: TextStyle(color: _textGrey, fontSize: 11),
+                      children: [
+                        TextSpan(
+                          text:
+                              'By clicking "Create Account", you agree to our ',
+                        ),
+                        TextSpan(
+                          text: 'Terms of Service',
                           style: TextStyle(
-                            fontSize: 16,
+                            color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Already have an account
-              Center(
-                child: GestureDetector(
-                  onTap: () =>
-                      context.canPop() ? context.pop() : context.go('/login'),
-                  child: RichText(
-                    text: const TextSpan(
-                      children: [
+                        TextSpan(text: ' and\n'),
                         TextSpan(
-                          text: 'Already have an account? ',
-                          style: TextStyle(color: _textGrey, fontSize: 14),
-                        ),
-                        TextSpan(
-                          text: 'Login',
+                          text: 'Privacy Policy',
                           style: TextStyle(
-                            color: _pink,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
+                        TextSpan(text: '.'),
                       ],
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-
-              // Terms
-              Center(
-                child: RichText(
-                  textAlign: TextAlign.center,
-                  text: const TextSpan(
-                    style: TextStyle(color: _textGrey, fontSize: 11),
-                    children: [
-                      TextSpan(
-                        text: 'By clicking "Create Account", you agree to our ',
-                      ),
-                      TextSpan(
-                        text: 'Terms of Service',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      TextSpan(text: ' and\n'),
-                      TextSpan(
-                        text: 'Privacy Policy',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      TextSpan(text: '.'),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );

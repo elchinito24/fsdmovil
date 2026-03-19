@@ -1,61 +1,104 @@
-import 'package:fsdmovil/config/api_routes.dart';
-import 'package:fsdmovil/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fsdmovil/services/api_service.dart';
 
 class AuthService {
-  static const _tokenKey = 'auth_token';
+  static const _accessTokenKey = 'access_token';
+  static const _refreshTokenKey = 'refresh_token';
+  static const _userEmailKey = 'user_email';
 
-  /// Login: devuelve el token si es exitoso
-  static Future<String?> login(String email, String password) async {
-    final response = await ApiService.dio.post(
-      ApiRoutes.authLogin,
+  static SharedPreferences? _prefs;
+
+  static String? _accessToken;
+  static String? _refreshToken;
+  static String? _userEmail;
+
+  static String? get userEmail => _userEmail;
+
+  static Future<void> initialize() async {
+    _prefs = await SharedPreferences.getInstance();
+
+    _accessToken = _prefs?.getString(_accessTokenKey);
+    _refreshToken = _prefs?.getString(_refreshTokenKey);
+    _userEmail = _prefs?.getString(_userEmailKey);
+
+    if (_accessToken != null && _accessToken!.isNotEmpty) {
+      ApiService.setAuthToken(_accessToken!);
+    }
+  }
+
+  static Future<void> login({
+    required String email,
+    required String password,
+  }) async {
+    final response = await ApiService.plainDio.post(
+      '/auth/login/',
       data: {'email': email, 'password': password},
     );
-    final token = response.data['token'] as String?;
-    if (token != null) {
-      await _saveToken(token);
-      ApiService.setAuthToken(token);
+
+    final data = Map<String, dynamic>.from(response.data);
+
+    final access = data['access']?.toString();
+    final refresh = data['refresh']?.toString();
+    final user = Map<String, dynamic>.from(data['user'] ?? {});
+    final userEmail = user['email']?.toString() ?? email;
+
+    if (access == null || refresh == null) {
+      throw Exception('El backend no devolvió tokens válidos.');
     }
-    return token;
+
+    _accessToken = access;
+    _refreshToken = refresh;
+    _userEmail = userEmail;
+
+    await _prefs?.setString(_accessTokenKey, access);
+    await _prefs?.setString(_refreshTokenKey, refresh);
+    await _prefs?.setString(_userEmailKey, userEmail);
+
+    ApiService.setAuthToken(access);
   }
 
-  /// Register: devuelve el token si el registro fue exitoso
-  static Future<String?> register(
-    String firstName,
-    String lastName,
-    String email,
-    String password,
-  ) async {
-    final response = await ApiService.dio.post(
-      ApiRoutes.authRegister,
+  static Future<void> register({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String password,
+    required String passwordConfirm,
+  }) async {
+    await ApiService.plainDio.post(
+      '/auth/register/',
       data: {
-        'firstName': firstName,
-        'lastName': lastName,
+        'first_name': firstName,
+        'last_name': lastName,
         'email': email,
         'password': password,
+        'password_confirm': passwordConfirm,
       },
     );
-    final token = response.data['token'] as String?;
-    if (token != null) {
-      await _saveToken(token);
-      ApiService.setAuthToken(token);
-    }
-    return token;
   }
+
+  static Future<bool> restoreSession() async {
+    if (_accessToken != null && _accessToken!.isNotEmpty) {
+      ApiService.setAuthToken(_accessToken!);
+      return true;
+    }
+    return false;
+  }
+
+  static bool get hasSession =>
+      _accessToken != null &&
+      _accessToken!.isNotEmpty &&
+      _refreshToken != null &&
+      _refreshToken!.isNotEmpty;
 
   static Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
+    _accessToken = null;
+    _refreshToken = null;
+    _userEmail = null;
+
     ApiService.clearAuthToken();
-  }
 
-  static Future<void> _saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
-  }
-
-  static Future<String?> getSavedToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey);
+    await _prefs?.remove(_accessTokenKey);
+    await _prefs?.remove(_refreshTokenKey);
+    await _prefs?.remove(_userEmailKey);
   }
 }
