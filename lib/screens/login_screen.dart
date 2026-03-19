@@ -23,7 +23,34 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   String? _error;
 
+  String? _validateEmail(String email) {
+    if (email.isEmpty) return 'El email es requerido.';
+    final emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[\w.]+$');
+    if (!emailRegex.hasMatch(email)) return 'Ingresa un email válido.';
+    return null;
+  }
+
+  String? _validatePassword(String password) {
+    if (password.isEmpty) return 'La contraseña es requerida.';
+    if (password.length < 6) return 'La contraseña debe tener al menos 6 caracteres.';
+    return null;
+  }
+
   Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+
+    final emailError = _validateEmail(_emailCtrl.text.trim());
+    if (emailError != null) {
+      setState(() => _error = emailError);
+      return;
+    }
+
+    final passwordError = _validatePassword(_passwordCtrl.text);
+    if (passwordError != null) {
+      setState(() => _error = passwordError);
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
@@ -32,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await AuthService.login(
         email: _emailCtrl.text.trim(),
-        password: _passwordCtrl.text.trim(),
+        password: _passwordCtrl.text,
       );
 
       if (!mounted) return;
