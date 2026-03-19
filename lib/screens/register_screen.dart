@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/providers/auth_provider.dart';
+import 'package:fsdmovil/widgets/app_logo.dart';
 
 const _pink = Color(0xFFE8365D);
-const _darkBg = Color(0xFF1C1C1E);
-const _fieldBg = Color(0xFF2C2C2E);
+const _darkBg = Color(0xFF0F1017);
+const _fieldBg = Color(0xFF1E2030);
 const _textGrey = Color(0xFF8E8E93);
 
 enum _PasswordStrength { none, weak, fair, good, strong }
@@ -107,7 +108,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       case _PasswordStrength.strong:
         return Colors.green;
       default:
-        return const Color(0xFF3A3A3C);
+        return const Color(0xFF2A2D3A);
     }
   }
 
@@ -173,11 +174,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               children: [
                 Row(
                   children: [
-                    Image.asset(
-                      'assets/images/logo_transparente.png',
-                      width: 50,
-                      height: 50,
-                    ),
+                    const AppLogo(size: 50),
                     const SizedBox(width: 10),
                     const Text(
                       'FSD',
@@ -328,7 +325,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     child: LinearProgressIndicator(
                       value: strengthValue,
                       minHeight: 4,
-                      backgroundColor: const Color(0xFF3A3A3C),
+                      backgroundColor: const Color(0xFF2A2D3A),
                       valueColor: AlwaysStoppedAnimation<Color>(strengthColor),
                     ),
                   ),

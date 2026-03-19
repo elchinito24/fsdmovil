@@ -12,6 +12,8 @@ import 'package:fsdmovil/screens/create_workspace_screen.dart';
 import 'package:fsdmovil/screens/workspaces_screen.dart';
 import 'package:fsdmovil/screens/workspace_detail_screen.dart';
 
+final routeObserver = RouteObserver<PageRoute<dynamic>>();
+
 Page<void> _slideTransition(
   BuildContext context,
   GoRouterState state,
@@ -41,6 +43,7 @@ Page<void> _slideTransition(
 
 final appRouter = GoRouter(
   initialLocation: '/splash',
+  observers: [routeObserver],
   routes: [
     GoRoute(
       path: '/splash',

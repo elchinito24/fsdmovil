@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
 
+const _pink = Color(0xFFE8365D);
+const _darkBg = Color(0xFF0F1017);
+const _cardBg = Color(0xFF191B24);
+const _fieldBg = Color(0xFF1E2030);
+const _borderColor = Color(0xFF2A2D3A);
+const _textGrey = Color(0xFF8E8E93);
+
 class EditorScreen extends StatefulWidget {
   final int projectId;
 
@@ -263,21 +270,21 @@ class _EditorScreenState extends State<EditorScreen> {
   InputDecoration inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: Color(0xFF9A9A9A)),
+      hintStyle: const TextStyle(color: _textGrey),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: _fieldBg,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFFD9D9D9)),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _borderColor),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFFD9D9D9)),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _borderColor),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFFE8365D), width: 1.5),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _pink, width: 1.5),
       ),
     );
   }
@@ -286,9 +293,9 @@ class _EditorScreenState extends State<EditorScreen> {
     return Text(
       text,
       style: const TextStyle(
-        fontWeight: FontWeight.w700,
-        fontSize: 16,
-        color: Colors.black,
+        fontWeight: FontWeight.w600,
+        fontSize: 14,
+        color: Colors.white,
       ),
     );
   }
@@ -307,6 +314,7 @@ class _EditorScreenState extends State<EditorScreen> {
         TextField(
           controller: controller,
           maxLines: maxLines,
+          style: const TextStyle(color: Colors.white),
           decoration: inputDecoration(hint),
         ),
       ],
@@ -593,14 +601,14 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F3F3),
+      backgroundColor: _darkBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF06071B),
+        backgroundColor: _darkBg,
         foregroundColor: Colors.white,
-        elevation: 2,
+        elevation: 0,
         title: const Text(
           'Editor IEEE 830',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.w800),
         ),
         actions: [
           Padding(
@@ -614,25 +622,26 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 10,
+                    vertical: 9,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: _pink,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Row(
                     children: [
                       Icon(
                         Icons.remove_red_eye_outlined,
-                        size: 18,
-                        color: Colors.black,
+                        size: 17,
+                        color: Colors.white,
                       ),
-                      SizedBox(width: 8),
+                      SizedBox(width: 7),
                       Text(
                         'Previa',
                         style: TextStyle(
-                          color: Colors.black,
+                          color: Colors.white,
                           fontWeight: FontWeight.w600,
+                          fontSize: 14,
                         ),
                       ),
                     ],
@@ -643,96 +652,148 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
         ],
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : errorMessage != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text(errorMessage!, textAlign: TextAlign.center),
-              ),
-            )
-          : ListView(
-              padding: const EdgeInsets.all(18),
-              children: [
-                const Text(
-                  'Seleccionar Sección',
-                  style: TextStyle(
-                    color: Color(0xFF7A7A7A),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.black, width: 1.2),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: selectedSection,
-                      isExpanded: true,
-                      icon: const Icon(
-                        Icons.keyboard_arrow_down,
-                        color: Colors.black,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment(0.85, 0.85),
+            radius: 0.9,
+            colors: [Color(0x1FE8365D), Colors.transparent],
+            stops: [0.0, 1.0],
+          ),
+        ),
+        child: loading
+            ? const Center(
+                child: CircularProgressIndicator(color: _pink),
+              )
+            : errorMessage != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline, color: _pink, size: 48),
+                      const SizedBox(height: 16),
+                      Text(
+                        errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: _textGrey),
                       ),
-                      style: const TextStyle(color: Colors.black, fontSize: 16),
-                      items: sections.map((section) {
-                        return DropdownMenuItem<String>(
-                          value: section['value'],
-                          child: Text(section['label']!),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setState(() {
-                          selectedSection = value;
-                        });
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                if (selectedSection == 'portada') buildPortadaFields(),
-                if (selectedSection == 'introduccion')
-                  buildIntroduccionFields(),
-                if (selectedSection == 'descripcion') buildDescripcionFields(),
-                if (selectedSection == 'requisitos') buildRequisitosFields(),
-                const SizedBox(height: 24),
-                SizedBox(
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: saving ? null : saveChanges,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE8365D),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: saving
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Guardar cambios',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                      const SizedBox(height: 20),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            loading = true;
+                            errorMessage = null;
+                          });
+                          loadSrs();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _pink,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
+                        ),
+                        child: const Text('Reintentar'),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              )
+            : SafeArea(
+                top: false,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+                  children: [
+                    const Text(
+                      'Seleccionar Sección',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: _fieldBg,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: _borderColor),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedSection,
+                          isExpanded: true,
+                          dropdownColor: _cardBg,
+                          icon: const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: _textGrey,
+                          ),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                          ),
+                          items: sections.map((section) {
+                            return DropdownMenuItem<String>(
+                              value: section['value'],
+                              child: Text(section['label']!),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() {
+                              selectedSection = value;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    if (selectedSection == 'portada') buildPortadaFields(),
+                    if (selectedSection == 'introduccion')
+                      buildIntroduccionFields(),
+                    if (selectedSection == 'descripcion')
+                      buildDescripcionFields(),
+                    if (selectedSection == 'requisitos')
+                      buildRequisitosFields(),
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      height: 54,
+                      child: ElevatedButton(
+                        onPressed: saving ? null : saveChanges,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _pink,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: _pink.withOpacity(0.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: saving
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'Guardar cambios',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
     );
   }
 }

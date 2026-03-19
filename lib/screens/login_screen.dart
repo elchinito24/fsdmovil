@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/auth_service.dart';
+import 'package:fsdmovil/widgets/app_logo.dart';
 
 const _pink = Color(0xFFE8365D);
-const _darkBg = Color(0xFF1C1C1E);
-const _fieldBg = Color(0xFF2C2C2E);
+const _darkBg = Color(0xFF0F1017);
+const _fieldBg = Color(0xFF1E2030);
 const _textGrey = Color(0xFF8E8E93);
-const _dividerColor = Color(0xFF3A3A3C);
+const _dividerColor = Color(0xFF2A2D3A);
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -79,11 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 Row(
                   children: [
-                    Image.asset(
-                      'assets/images/logo_transparente.png',
-                      width: 50,
-                      height: 50,
-                    ),
+                    const AppLogo(size: 50),
                     const SizedBox(width: 10),
                     const Text(
                       'FSD',
@@ -244,7 +241,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 24),
                 Center(
                   child: GestureDetector(
-                    onTap: () {},
+                    onTap: () => context.push('/register'),
                     child: RichText(
                       text: const TextSpan(
                         children: [

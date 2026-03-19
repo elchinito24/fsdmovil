@@ -1,5 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:fsdmovil/services/api_service.dart';
+import 'package:fsdmovil/services/srs_word_service.dart';
+
+const _pink = Color(0xFFE8365D);
+const _darkBg = Color(0xFF0F1017);
+const _textGrey = Color(0xFF8E8E93);
+
+// Word document colors
+const _docBg = Colors.white;
+const _docText = Color(0xFF1A1A1A);
+const _docTextLight = Color(0xFF444444);
+const _docHeading1 = Color(0xFF1F3864); // Word navy blue
+const _docHeading2 = Color(0xFF2E5197);
+const _docAccent = Color(0xFF2E5197);
+const _docBorder = Color(0xFFD0D7DE);
+const _docTableHeader = Color(0xFFD6E4F0);
 
 class PreviewScreen extends StatefulWidget {
   final int projectId;
@@ -12,6 +27,7 @@ class PreviewScreen extends StatefulWidget {
 
 class _PreviewScreenState extends State<PreviewScreen> {
   bool loading = true;
+  bool _generatingWord = false;
   String? errorMessage;
   Map<String, dynamic>? responseData;
 
@@ -24,7 +40,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
   Future<void> loadPreview() async {
     try {
       final data = await ApiService.getProjectSrs(widget.projectId);
-
       setState(() {
         responseData = data;
         loading = false;
@@ -44,92 +59,108 @@ class _PreviewScreenState extends State<PreviewScreen> {
     return text.isEmpty ? fallback : text;
   }
 
-  Widget buildActionButton({
-    required String text,
-    required Color backgroundColor,
-    required Color textColor,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: SizedBox(
-        height: 50,
-        child: ElevatedButton.icon(
-          onPressed: onTap,
-          icon: const Icon(Icons.download, size: 18),
-          label: Text(text),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: backgroundColor,
-            foregroundColor: textColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            elevation: 0,
+  // ---------- Word-style document widgets ----------
+
+  Widget _docH1(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: _docHeading1,
+            letterSpacing: 0.2,
           ),
         ),
-      ),
-    );
-  }
+      );
 
-  static Widget _centerInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text.rich(
-        TextSpan(
-          style: const TextStyle(fontSize: 15, color: Colors.black),
-          children: [
-            TextSpan(
-              text: '$label: ',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+  Widget _docH2(String text) => Padding(
+        padding: const EdgeInsets.only(top: 16, bottom: 4),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: _docHeading2,
+          ),
+        ),
+      );
+
+  Widget _docP(String text) => Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 13,
+            height: 1.7,
+            color: _docTextLight,
+          ),
+        ),
+      );
+
+  Widget _docBulletList(List items, {String emptyText = 'Sin información'}) {
+    if (items.isEmpty) return _docP(emptyText);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: items
+          .map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(top: 4, left: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6, right: 8),
+                    child: CircleAvatar(
+                      radius: 3,
+                      backgroundColor: _docAccent,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      safeText(item),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.7,
+                        color: _docTextLight,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            TextSpan(text: value),
-          ],
-        ),
-        textAlign: TextAlign.center,
-      ),
+          )
+          .toList(),
     );
   }
 
-  static Widget _documentSubTitle(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 17,
-        fontWeight: FontWeight.w700,
-        color: Colors.black,
-      ),
-    );
-  }
-
-  static Widget _documentParagraph(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 15,
-          height: 1.6,
-          color: Colors.black87,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSimpleList(List items, {String emptyText = 'Sin información'}) {
-    if (items.isEmpty) {
-      return _documentParagraph(emptyText);
-    }
-
+  Widget _docDefinitionsList(List items) {
+    if (items.isEmpty) return _docP('Sin información');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: items.map((item) {
+        final data = Map<String, dynamic>.from(item);
+        final term = safeText(data['term'], fallback: '');
+        final def = safeText(data['definition'], fallback: '');
         return Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            '• ${safeText(item)}',
-            style: const TextStyle(
-              fontSize: 15,
-              height: 1.6,
-              color: Colors.black87,
+          padding: const EdgeInsets.only(top: 6, left: 8),
+          child: RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.7,
+                color: _docTextLight,
+              ),
+              children: [
+                TextSpan(
+                  text: '$term: ',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: _docText,
+                  ),
+                ),
+                TextSpan(text: def),
+              ],
             ),
           ),
         );
@@ -137,86 +168,37 @@ class _PreviewScreenState extends State<PreviewScreen> {
     );
   }
 
-  Widget _buildDefinitionsList(List items) {
-    if (items.isEmpty) {
-      return _documentParagraph('Sin información');
-    }
-
+  Widget _docUserClasses(List items) {
+    if (items.isEmpty) return _docP('Sin clases de usuario registradas');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: items.map((item) {
         final data = Map<String, dynamic>.from(item);
-        return Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            '${safeText(data['term'])}: ${safeText(data['definition'])}',
-            style: const TextStyle(
-              fontSize: 15,
-              height: 1.6,
-              color: Colors.black87,
-            ),
+        return Container(
+          margin: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F8FF),
+            border: Border.all(color: _docBorder),
+            borderRadius: BorderRadius.circular(4),
           ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildUserClasses(List items) {
-    if (items.isEmpty) {
-      return _documentParagraph('Sin clases de usuario registradas');
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: items.map((item) {
-        final data = Map<String, dynamic>.from(item);
-        return Padding(
-          padding: const EdgeInsets.only(top: 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '• ${safeText(data['name'], fallback: 'Usuario')}',
+                safeText(data['name'], fallback: 'Usuario'),
                 style: const TextStyle(
-                  fontSize: 15,
-                  height: 1.5,
-                  color: Colors.black,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: _docText,
                 ),
               ),
               if (safeText(data['id'], fallback: '').isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    'ID: ${safeText(data['id'])}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.5,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'Descripción: ${safeText(data['description'])}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: Colors.black87,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'Características: ${safeText(data['characteristics'])}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: Colors.black87,
-                  ),
-                ),
+                _docFieldRow('ID', safeText(data['id'])),
+              _docFieldRow('Descripción', safeText(data['description'])),
+              _docFieldRow(
+                'Características',
+                safeText(data['characteristics']),
               ),
             ],
           ),
@@ -225,7 +207,81 @@ class _PreviewScreenState extends State<PreviewScreen> {
     );
   }
 
-  Widget buildDocumentPreview() {
+  Widget _docFieldRow(String label, String value) => Padding(
+        padding: const EdgeInsets.only(top: 3),
+        child: RichText(
+          text: TextSpan(
+            style: const TextStyle(fontSize: 12, height: 1.5, color: _docTextLight),
+            children: [
+              TextSpan(
+                text: '$label: ',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: _docText,
+                ),
+              ),
+              TextSpan(text: value),
+            ],
+          ),
+        ),
+      );
+
+  Widget _docDivider() => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 14),
+        child: Divider(color: _docBorder, thickness: 1),
+      );
+
+  Widget _docInfoTable({
+    required String projectName,
+    required String version,
+    required String date,
+    required String author,
+    required String organization,
+  }) {
+    final rows = [
+      ['Proyecto', projectName],
+      ['Versión', version],
+      ['Fecha', date],
+      ['Autor(es)', author],
+      ['Organización', organization],
+    ];
+    return Table(
+      border: TableBorder.all(color: _docBorder, width: 0.8),
+      columnWidths: const {
+        0: IntrinsicColumnWidth(),
+        1: FlexColumnWidth(),
+      },
+      children: rows.map((row) {
+        return TableRow(
+          decoration: BoxDecoration(
+            color: row == rows.first ? _docTableHeader : Colors.white,
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              child: Text(
+                row[0],
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: _docText,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              child: Text(
+                row[1],
+                style: const TextStyle(fontSize: 12, color: _docTextLight),
+              ),
+            ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildDocumentPage() {
     final srs = Map<String, dynamic>.from(responseData?['srs_data'] ?? {});
     final metadata = Map<String, dynamic>.from(srs['metadata'] ?? {});
     final introduction = Map<String, dynamic>.from(srs['introduction'] ?? {});
@@ -242,259 +298,402 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final author = safeText(metadata['owner']);
     final organization = safeText(metadata['organization']);
 
-    final purpose = safeText(introduction['purpose']);
-    final scope = safeText(introduction['scope']);
-    final overview = safeText(introduction['overview']);
-    final references = List.from(introduction['references'] ?? []);
-    final definitions = List.from(introduction['definitions'] ?? []);
-
-    final productPerspective = safeText(
-      overallDescription['productPerspective'],
-    );
-    final productFunctions = safeText(overallDescription['productFunctions']);
-    final userClasses = List.from(overallDescription['userClasses'] ?? []);
-    final operatingEnvironment = safeText(
-      overallDescription['operatingEnvironment'],
-    );
-    final constraints = safeText(overallDescription['constraints']);
-    final assumptions = safeText(overallDescription['assumptions']);
-
-    final externalInterfaces = safeText(
-      specificRequirements['externalInterfaces'],
-    );
-    final functionalRequirements = List.from(
-      specificRequirements['functionalRequirements'] ?? [],
-    );
-    final nonFunctionalRequirements = List.from(
-      specificRequirements['nonFunctionalRequirements'] ?? [],
-    );
-    final businessRules = List.from(
-      specificRequirements['businessRules'] ?? [],
-    );
-    final useCases = List.from(specificRequirements['useCases'] ?? []);
-
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(4),
+        color: _docBg,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            color: Colors.black.withOpacity(0.45),
+            blurRadius: 24,
+            spreadRadius: 2,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Center(
-            child: Icon(
-              Icons.description_outlined,
-              size: 56,
-              color: Color(0xFF9AA3AF),
-            ),
-          ),
-          const SizedBox(height: 18),
-          const Center(
-            child: Text(
-              'Especificación de Requisitos de Software',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: Colors.black,
+          // ── Top blue accent strip (like Word's header bar) ──────────────
+          Container(height: 5, color: const Color(0xFF2B579A)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(72, 52, 72, 72),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── PORTADA ──────────────────────────────────
+            Center(
+              child: Column(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 6,
+                    color: _docHeading1,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'ESPECIFICACIÓN DE\nREQUISITOS DE SOFTWARE',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: _docHeading1,
+                      letterSpacing: 1,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'IEEE Std 830',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _docAccent,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                ],
               ),
             ),
+            _docInfoTable(
+              projectName: projectName,
+              version: version,
+              date: date,
+              author: author,
+              organization: organization,
+            ),
+            _docDivider(),
+
+            // ── 1. INTRODUCCIÓN ──────────────────────────
+            _docH1('1. Introducción'),
+            _docH2('1.1 Propósito'),
+            _docP(safeText(introduction['purpose'])),
+            _docH2('1.2 Alcance'),
+            _docP(safeText(introduction['scope'])),
+            _docH2('1.3 Definiciones, Acrónimos y Abreviaturas'),
+            _docDefinitionsList(
+              List.from(introduction['definitions'] ?? []),
+            ),
+            _docH2('1.4 Referencias'),
+            _docBulletList(
+              List.from(introduction['references'] ?? []),
+              emptyText: 'Sin referencias registradas',
+            ),
+            _docH2('1.5 Visión General'),
+            _docP(safeText(introduction['overview'])),
+            _docDivider(),
+
+            // ── 2. DESCRIPCIÓN GENERAL ───────────────────
+            _docH1('2. Descripción General'),
+            _docH2('2.1 Perspectiva del Producto'),
+            _docP(safeText(overallDescription['productPerspective'])),
+            _docH2('2.2 Funciones del Producto'),
+            _docP(safeText(overallDescription['productFunctions'])),
+            _docH2('2.3 Clases de Usuario'),
+            _docUserClasses(
+              List.from(overallDescription['userClasses'] ?? []),
+            ),
+            _docH2('2.4 Entorno Operativo'),
+            _docP(safeText(overallDescription['operatingEnvironment'])),
+            _docH2('2.5 Restricciones'),
+            _docP(safeText(overallDescription['constraints'])),
+            _docH2('2.6 Suposiciones y Dependencias'),
+            _docP(safeText(overallDescription['assumptions'])),
+            _docDivider(),
+
+            // ── 3. REQUISITOS ESPECÍFICOS ────────────────
+            _docH1('3. Requisitos Específicos'),
+            _docH2('3.1 Interfaces Externas'),
+            _docP(safeText(specificRequirements['externalInterfaces'])),
+            _docH2('3.2 Requisitos Funcionales'),
+            _docBulletList(
+              List.from(
+                specificRequirements['functionalRequirements'] ?? [],
+              ),
+              emptyText: 'Sin requisitos funcionales registrados',
+            ),
+            _docH2('3.3 Requisitos No Funcionales'),
+            _docBulletList(
+              List.from(
+                specificRequirements['nonFunctionalRequirements'] ?? [],
+              ),
+              emptyText: 'Sin requisitos no funcionales registrados',
+            ),
+            _docH2('3.4 Reglas de Negocio'),
+            _docBulletList(
+              List.from(specificRequirements['businessRules'] ?? []),
+              emptyText: 'Sin reglas de negocio registradas',
+            ),
+            _docH2('3.5 Casos de Uso'),
+            _docBulletList(
+              List.from(specificRequirements['useCases'] ?? []),
+              emptyText: 'Sin casos de uso registrados',
+            ),
+            const SizedBox(height: 16),
+            _docDivider(),
+            Center(
+              child: Text(
+                'Documento generado por FSD  •  v$version',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: _textGrey,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWordViewer() {
+    final srs = Map<String, dynamic>.from(responseData?['srs_data'] ?? {});
+    final metadata = Map<String, dynamic>.from(srs['metadata'] ?? {});
+    final projectName = safeText(metadata['projectName'], fallback: 'Documento');
+    final version = safeText(responseData?['version'], fallback: '1.0');
+    final safeName = projectName.replaceAll(' ', '_');
+
+    return Column(
+      children: [
+        // ── Word-style document title bar ─────────────────────────────────
+        Container(
+          color: const Color(0xFF1E1E1E),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.description_outlined,
+                color: Color(0xFF2B579A),
+                size: 17,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'SRS_$safeName.docx',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFCCCCCC),
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2B579A).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0xFF2B579A).withOpacity(0.4)),
+                ),
+                child: Text(
+                  'v$version',
+                  style: const TextStyle(
+                    color: Color(0xFF7AB0E8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 22),
-          Center(
-            child: Column(
+        ),
+        // ── Gray Word desktop ─────────────────────────────────────────────
+        Expanded(
+          child: Container(
+            color: const Color(0xFF525659),
+            child: ListView(
+              padding: const EdgeInsets.only(
+                top: 24,
+                bottom: 40,
+                left: 20,
+                right: 20,
+              ),
               children: [
-                _centerInfoRow('Proyecto', projectName),
-                _centerInfoRow('Versión', version),
-                _centerInfoRow('Fecha', date),
-                _centerInfoRow('Autor', author),
-                _centerInfoRow('Organización', organization),
+                // Page number top indicator
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Center(
+                    child: Text(
+                      'Página 1',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.40),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 700),
+                    child: _buildDocumentPage(),
+                  ),
+                ),
+                // Page bottom indicator
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Center(
+                    child: Text(
+                      '— Fin del documento —',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.35),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 28),
-          const Divider(height: 1),
-          const SizedBox(height: 26),
-
-          const Text(
-            '1. Introducción',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 18),
-
-          _documentSubTitle('1.1 Propósito'),
-          _documentParagraph(purpose),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('1.2 Alcance'),
-          _documentParagraph(scope),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('1.3 Definiciones, Acrónimos y Abreviaturas'),
-          _buildDefinitionsList(definitions),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('1.4 Referencias'),
-          _buildSimpleList(
-            references,
-            emptyText: 'Sin referencias registradas',
-          ),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('1.5 Visión General'),
-          _documentParagraph(overview),
-
-          const SizedBox(height: 28),
-          const Text(
-            '2. Descripción General',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 18),
-
-          _documentSubTitle('2.1 Perspectiva del Producto'),
-          _documentParagraph(productPerspective),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('2.2 Funciones del Producto'),
-          _documentParagraph(productFunctions),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('2.3 Clases de Usuario'),
-          _buildUserClasses(userClasses),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('2.4 Entorno Operativo'),
-          _documentParagraph(operatingEnvironment),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('2.5 Restricciones'),
-          _documentParagraph(constraints),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('2.6 Suposiciones y Dependencias'),
-          _documentParagraph(assumptions),
-
-          const SizedBox(height: 28),
-          const Text(
-            '3. Requisitos Específicos',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 18),
-
-          _documentSubTitle('3.1 Interfaces Externas'),
-          _documentParagraph(externalInterfaces),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('3.2 Requisitos Funcionales'),
-          _buildSimpleList(
-            functionalRequirements,
-            emptyText: 'Sin requisitos funcionales registrados',
-          ),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('3.3 Requisitos No Funcionales'),
-          _buildSimpleList(
-            nonFunctionalRequirements,
-            emptyText: 'Sin requisitos no funcionales registrados',
-          ),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('3.4 Reglas de Negocio'),
-          _buildSimpleList(
-            businessRules,
-            emptyText: 'Sin reglas de negocio registradas',
-          ),
-
-          const SizedBox(height: 18),
-          _documentSubTitle('3.5 Casos de Uso'),
-          _buildSimpleList(useCases, emptyText: 'Sin casos de uso registrados'),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F3F3),
+      backgroundColor: _darkBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF06071B),
+        backgroundColor: _darkBg,
         foregroundColor: Colors.white,
+        elevation: 0,
         title: const Text(
           'Vista Previa',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.w800),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Row(
+              children: [
+                _AppBarBtn(
+                  label: 'PDF',
+                  icon: Icons.picture_as_pdf_outlined,
+                  color: _pink,
+                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('La descarga de PDF estará disponible pronto'),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+_generatingWord
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                      )
+                    : _AppBarBtn(
+                        label: 'Word',
+                        icon: Icons.description_outlined,
+                        color: const Color(0xFF2B579A),
+                        onTap: () async {
+                          if (responseData == null) return;
+                          setState(() => _generatingWord = true);
+                          final error = await SrsWordService.generateAndOpen(
+                            responseData!,
+                          );
+                          if (!mounted) return;
+                          setState(() => _generatingWord = false);
+                          if (error != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(error)),
+                            );
+                          }
+                        },
+                      ),
+              ],
+            ),
+          ),
+        ],
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: _pink))
           : errorMessage != null
           ? Center(
               child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text(errorMessage!, textAlign: TextAlign.center),
-              ),
-            )
-          : ListView(
-              padding: const EdgeInsets.all(18),
-              children: [
-                Row(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    buildActionButton(
-                      text: 'PDF',
-                      backgroundColor: const Color(0xFFE21B4B),
-                      textColor: Colors.white,
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'La descarga de PDF quedará pendiente por ahora',
-                            ),
-                          ),
-                        );
-                      },
+                    const Icon(Icons.error_outline, color: _pink, size: 48),
+                    const SizedBox(height: 16),
+                    Text(
+                      errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: _textGrey),
                     ),
-                    const SizedBox(width: 14),
-                    buildActionButton(
-                      text: 'Word',
-                      backgroundColor: const Color(0xFF06071B),
-                      textColor: Colors.white,
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'La descarga de Word quedará pendiente por ahora',
-                            ),
-                          ),
-                        );
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          loading = true;
+                          errorMessage = null;
+                        });
+                        loadPreview();
                       },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _pink,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Reintentar'),
                     ),
                   ],
                 ),
-                const SizedBox(height: 18),
-                buildDocumentPreview(),
-              ],
+              ),
+            )
+          : _buildWordViewer(),
+    );
+  }
+}
+
+class _AppBarBtn extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _AppBarBtn({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 15, color: Colors.white),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
+          ],
+        ),
+      ),
     );
   }
 }
