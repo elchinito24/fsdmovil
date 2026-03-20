@@ -207,6 +207,30 @@ class ApiService {
     }
   }
 
+  static Future<void> deleteWorkspace(int workspaceId) async {
+    try {
+      await _dio.delete('/workspaces/$workspaceId/');
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al eliminar workspace: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al eliminar workspace: $e');
+    }
+  }
+
+  static Future<void> deleteProject(int projectId) async {
+    try {
+      await _dio.delete('/projects/$projectId/');
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al eliminar proyecto: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al eliminar proyecto: $e');
+    }
+  }
+
   static Future<Map<String, dynamic>> createProject(
     Map<String, dynamic> data,
   ) async {

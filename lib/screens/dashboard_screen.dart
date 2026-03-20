@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:fsdmovil/router/app_router.dart';
 import 'package:fsdmovil/services/auth_service.dart';
+import 'package:fsdmovil/widgets/app_logo.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF0F1017);
@@ -8,8 +10,69 @@ const _cardBg = Color(0xFF191B24);
 const _borderColor = Color(0xFF2A2D3A);
 const _textGrey = Color(0xFF8E8E93);
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen>
+    with SingleTickerProviderStateMixin
+    implements RouteAware {
+  bool _fabOpen = false;
+  late final AnimationController _fabCtrl;
+  late final Animation<double> _fabAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _fabCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _fabAnim = CurvedAnimation(parent: _fabCtrl, curve: Curves.easeOut);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPushNext() => _closeFab();
+
+  @override
+  void didPopNext() {}
+
+  @override
+  void didPush() {}
+
+  @override
+  void didPop() {}
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    _fabCtrl.dispose();
+    super.dispose();
+  }
+
+  void _toggleFab() {
+    setState(() => _fabOpen = !_fabOpen);
+    _fabOpen ? _fabCtrl.forward() : _fabCtrl.reverse();
+  }
+
+  void _closeFab() {
+    if (_fabOpen) {
+      setState(() => _fabOpen = false);
+      _fabCtrl.reverse();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -17,11 +80,13 @@ class DashboardScreen extends StatelessWidget {
       backgroundColor: _darkBg,
       appBar: AppBar(
         backgroundColor: _darkBg,
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         elevation: 0,
         titleSpacing: 20,
         title: const Row(
           children: [
-            _LogoBox(),
+            AppLogo(size: 34),
             SizedBox(width: 12),
             Text(
               'FSD',
@@ -37,6 +102,7 @@ class DashboardScreen extends StatelessWidget {
           IconButton(
             tooltip: 'Cerrar sesión',
             onPressed: () async {
+              _closeFab();
               await AuthService.logout();
               if (context.mounted) {
                 context.go('/login');
@@ -45,6 +111,71 @@ class DashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.logout, color: Colors.white),
           ),
           const SizedBox(width: 8),
+        ],
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          ScaleTransition(
+            scale: _fabAnim,
+            child: FadeTransition(
+              opacity: _fabAnim,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  SizedBox(
+                    width: 200,
+                    child: FloatingActionButton.extended(
+                      heroTag: 'fab_workspace',
+                      onPressed: () {
+                        _closeFab();
+                        context.push('/create-workspace');
+                      },
+                      backgroundColor: const Color(0xFF242734),
+                      elevation: 4,
+                      icon: const Icon(Icons.grid_view_rounded, color: Colors.white, size: 20),
+                      label: const Text(
+                        'Crear Workspace',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: 200,
+                    child: FloatingActionButton.extended(
+                      heroTag: 'fab_project',
+                      onPressed: () {
+                        _closeFab();
+                        context.push('/create-project');
+                      },
+                      backgroundColor: _pink,
+                      elevation: 4,
+                      icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
+                      label: const Text(
+                        'Crear Proyecto',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+          FloatingActionButton(
+            heroTag: 'fab_main',
+            onPressed: _toggleFab,
+            backgroundColor: _pink,
+            elevation: 6,
+            child: AnimatedRotation(
+              turns: _fabOpen ? 0.125 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: const Icon(Icons.add, color: Colors.white, size: 28),
+            ),
+          ),
         ],
       ),
       body: Container(
@@ -59,7 +190,7 @@ class DashboardScreen extends StatelessWidget {
         child: SafeArea(
           top: false,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 120),
             children: [
               const Text(
                 'OVERVIEW',
@@ -101,7 +232,6 @@ class DashboardScreen extends StatelessWidget {
                 style: TextStyle(color: _textGrey, fontSize: 15, height: 1.5),
               ),
               const SizedBox(height: 28),
-
               Row(
                 children: [
                   Expanded(
@@ -123,9 +253,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 26),
-
               const Text(
                 'Acciones rápidas',
                 style: TextStyle(
@@ -135,41 +263,29 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
-
               _DashboardActionCard(
                 title: 'Mis Proyectos',
                 description:
                     'Consulta todos los proyectos creados y continúa editando sus documentos.',
                 icon: Icons.folder_outlined,
+                highlighted: true,
                 onTap: () {
+                  _closeFab();
                   context.push('/projects');
                 },
               ),
               const SizedBox(height: 14),
-
               _DashboardActionCard(
-                title: 'Crear Proyecto',
+                title: 'Mis Workspaces',
                 description:
-                    'Crea un nuevo proyecto y comienza a trabajar su documento SRS.',
-                icon: Icons.add_circle_outline,
-                highlighted: true,
-                onTap: () {
-                  context.push('/create-project');
-                },
-              ),
-              const SizedBox(height: 14),
-
-              _DashboardActionCard(
-                title: 'Crear Workspace',
-                description:
-                    'Organiza equipos y proyectos dentro de un nuevo workspace.',
+                    'Organiza equipos y proyectos dentro de tus workspaces.',
                 icon: Icons.grid_view_rounded,
                 onTap: () {
+                  _closeFab();
                   context.push('/workspaces');
                 },
               ),
               const SizedBox(height: 14),
-
               _DashboardActionCard(
                 title: 'Proyectos Compartidos',
                 description:
@@ -185,26 +301,45 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-class _LogoBox extends StatelessWidget {
-  const _LogoBox();
+class _FabMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final bool isFirst;
+  final VoidCallback onTap;
+
+  const _FabMenuItem({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.isFirst,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        color: _pink,
-        borderRadius: BorderRadius.circular(10),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.vertical(
+        top: isFirst ? const Radius.circular(16) : Radius.zero,
+        bottom: !isFirst ? const Radius.circular(16) : Radius.zero,
       ),
-      child: const Center(
-        child: Text(
-          'F',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w900,
-            fontSize: 18,
-          ),
+      child: Container(
+        width: 200,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );

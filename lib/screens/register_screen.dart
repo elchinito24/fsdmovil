@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/providers/auth_provider.dart';
+import 'package:fsdmovil/widgets/app_logo.dart';
 
 const _pink = Color(0xFFE8365D);
-const _darkBg = Color(0xFF1C1C1E);
-const _fieldBg = Color(0xFF2C2C2E);
+const _darkBg = Color(0xFF0F1017);
+const _fieldBg = Color(0xFF1E2030);
 const _textGrey = Color(0xFF8E8E93);
 
 enum _PasswordStrength { none, weak, fair, good, strong }
@@ -43,24 +44,33 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     return _PasswordStrength.strong;
   }
 
+  String? _validateFields() {
+    if (_firstNameCtrl.text.trim().isEmpty) return 'El nombre es requerido.';
+    if (_lastNameCtrl.text.trim().isEmpty) return 'El apellido es requerido.';
+
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) return 'El email es requerido.';
+    final emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[\w.]+$');
+    if (!emailRegex.hasMatch(email)) return 'Ingresa un email válido.';
+
+    final password = _passwordCtrl.text;
+    if (password.isEmpty) return 'La contraseña es requerida.';
+    if (password.length < 8) return 'La contraseña debe tener al menos 8 caracteres.';
+    if (!RegExp(r'[A-Z]').hasMatch(password)) return 'La contraseña debe tener al menos una mayúscula.';
+    if (!RegExp(r'[0-9]').hasMatch(password)) return 'La contraseña debe tener al menos un número.';
+
+    if (_confirmPasswordCtrl.text.isEmpty) return 'Confirma tu contraseña.';
+    if (password != _confirmPasswordCtrl.text) return 'Las contraseñas no coinciden.';
+
+    return null;
+  }
+
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
 
-    if (_firstNameCtrl.text.trim().isEmpty ||
-        _lastNameCtrl.text.trim().isEmpty ||
-        _emailCtrl.text.trim().isEmpty ||
-        _passwordCtrl.text.isEmpty ||
-        _confirmPasswordCtrl.text.isEmpty) {
-      setState(() {
-        _error = 'Please complete all fields.';
-      });
-      return;
-    }
-
-    if (_passwordCtrl.text != _confirmPasswordCtrl.text) {
-      setState(() {
-        _error = 'Passwords do not match.';
-      });
+    final validationError = _validateFields();
+    if (validationError != null) {
+      setState(() => _error = validationError);
       return;
     }
 
@@ -107,7 +117,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       case _PasswordStrength.strong:
         return Colors.green;
       default:
-        return const Color(0xFF3A3A3C);
+        return const Color(0xFF2A2D3A);
     }
   }
 
@@ -173,11 +183,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               children: [
                 Row(
                   children: [
-                    Image.asset(
-                      'assets/images/logo_transparente.png',
-                      width: 50,
-                      height: 50,
-                    ),
+                    const AppLogo(size: 50),
                     const SizedBox(width: 10),
                     const Text(
                       'FSD',
@@ -328,7 +334,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     child: LinearProgressIndicator(
                       value: strengthValue,
                       minHeight: 4,
-                      backgroundColor: const Color(0xFF3A3A3C),
+                      backgroundColor: const Color(0xFF2A2D3A),
                       valueColor: AlwaysStoppedAnimation<Color>(strengthColor),
                     ),
                   ),

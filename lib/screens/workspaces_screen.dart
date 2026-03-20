@@ -185,11 +185,119 @@ class _WorkspacesScreenState extends State<WorkspacesScreen> {
                         ...workspaces.map((workspace) {
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 16),
-                            child: _WorkspaceCard(
-                              workspace: workspace,
-                              onTap: () {
-                                context.push('/workspace/${workspace['id']}');
-                              },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: _borderColor),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(23),
+                                child: Dismissible(
+                                  key: ValueKey(workspace['id']),
+                                  direction: DismissDirection.endToStart,
+                                  background: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 28),
+                                    color: const Color(0xFF2A0A10),
+                                    child: const Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.delete_outline_rounded,
+                                          color: _pink,
+                                          size: 28,
+                                        ),
+                                        SizedBox(height: 4),
+                                        Text(
+                                          'Eliminar',
+                                          style: TextStyle(
+                                            color: _pink,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  confirmDismiss: (_) async {
+                                    return await showDialog<bool>(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            backgroundColor: _cardBg,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                            title: const Text(
+                                              'Eliminar workspace',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                            content: Text(
+                                              '¿Seguro que quieres eliminar "${workspace['name']}"? Esta acción no se puede deshacer.',
+                                              style: const TextStyle(
+                                                  color: _textGrey),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, false),
+                                                child: const Text('Cancelar',
+                                                    style: TextStyle(
+                                                        color: _textGrey)),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, true),
+                                                style:
+                                                    ElevatedButton.styleFrom(
+                                                  backgroundColor: _pink,
+                                                  foregroundColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            10),
+                                                  ),
+                                                ),
+                                                child:
+                                                    const Text('Eliminar'),
+                                              ),
+                                            ],
+                                          ),
+                                        ) ??
+                                        false;
+                                  },
+                                  onDismissed: (_) async {
+                                    final removed = workspace;
+                                    setState(() {
+                                      workspaces.removeWhere(
+                                          (w) => w['id'] == workspace['id']);
+                                    });
+                                    try {
+                                      await ApiService.deleteWorkspace(
+                                          workspace['id']);
+                                    } catch (e) {
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content:
+                                              Text('Error al eliminar: $e'),
+                                          backgroundColor: _pink,
+                                        ),
+                                      );
+                                      setState(() => workspaces.add(removed));
+                                    }
+                                  },
+                                  child: _WorkspaceCard(
+                                    workspace: workspace,
+                                    onTap: () => context
+                                        .push('/workspace/${workspace['id']}'),
+                                  ),
+                                ),
+                              ),
                             ),
                           );
                         }),
@@ -220,11 +328,7 @@ class _WorkspaceCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: _borderColor),
-        ),
+        color: _cardBg,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

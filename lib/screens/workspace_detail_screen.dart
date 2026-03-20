@@ -176,11 +176,110 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
                   ...projects.map((project) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 16),
-                      child: _ProjectCard(
-                        project: project,
-                        onTap: () {
-                          context.push('/editor/${project['id']}');
-                        },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: _borderColor),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(21),
+                          child: Dismissible(
+                            key: ValueKey(project['id']),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 28),
+                              color: const Color(0xFF2A0A10),
+                              child: const Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: _pink,
+                                    size: 28,
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Eliminar',
+                                    style: TextStyle(
+                                      color: _pink,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            confirmDismiss: (_) async {
+                              return await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      backgroundColor: _cardBg,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      title: const Text(
+                                        'Eliminar proyecto',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      content: Text(
+                                        '¿Seguro que quieres eliminar "${project['name']}"? Esta acción no se puede deshacer.',
+                                        style: const TextStyle(color: _textGrey),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, false),
+                                          child: const Text('Cancelar',
+                                              style: TextStyle(color: _textGrey)),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, true),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: _pink,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          child: const Text('Eliminar'),
+                                        ),
+                                      ],
+                                    ),
+                                  ) ??
+                                  false;
+                            },
+                            onDismissed: (_) async {
+                              final removed = project;
+                              setState(() {
+                                projects.removeWhere(
+                                    (p) => p['id'] == project['id']);
+                              });
+                              try {
+                                await ApiService.deleteProject(project['id']);
+                              } catch (e) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error al eliminar: $e'),
+                                    backgroundColor: _pink,
+                                  ),
+                                );
+                                setState(() => projects.add(removed));
+                              }
+                            },
+                            child: _ProjectCard(
+                              project: project,
+                              onTap: () =>
+                                  context.push('/editor/${project['id']}'),
+                            ),
+                          ),
+                        ),
                       ),
                     );
                   }),
@@ -264,11 +363,7 @@ class _ProjectCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: _borderColor),
-        ),
+        color: _cardBg,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

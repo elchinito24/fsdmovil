@@ -46,6 +46,9 @@ dependencies:
   path_provider: ^2.1.5
   open_filex: ^4.7.0
 
+  # Generación de documentos Word
+  docs_gee: ^1.2.2
+
   # Almacenamiento local (token JWT)
   shared_preferences: ^2.5.3
 

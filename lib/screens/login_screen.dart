@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/auth_service.dart';
+import 'package:fsdmovil/widgets/app_logo.dart';
 
 const _pink = Color(0xFFE8365D);
-const _darkBg = Color(0xFF1C1C1E);
-const _fieldBg = Color(0xFF2C2C2E);
+const _darkBg = Color(0xFF0F1017);
+const _fieldBg = Color(0xFF1E2030);
 const _textGrey = Color(0xFF8E8E93);
-const _dividerColor = Color(0xFF3A3A3C);
+const _dividerColor = Color(0xFF2A2D3A);
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,9 +23,37 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   String? _error;
 
+  String? _validateEmail(String email) {
+    if (email.isEmpty) return 'El email es requerido.';
+    final emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[\w.]+$');
+    if (!emailRegex.hasMatch(email)) return 'Ingresa un email válido.';
+    return null;
+  }
+
+  String? _validatePassword(String password) {
+    if (password.isEmpty) return 'La contraseña es requerida.';
+    if (password.length < 6) return 'La contraseña debe tener al menos 6 caracteres.';
+    return null;
+  }
+
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
 
+<<<<<<< HEAD
+=======
+    final emailError = _validateEmail(_emailCtrl.text.trim());
+    if (emailError != null) {
+      setState(() => _error = emailError);
+      return;
+    }
+
+    final passwordError = _validatePassword(_passwordCtrl.text);
+    if (passwordError != null) {
+      setState(() => _error = passwordError);
+      return;
+    }
+
+>>>>>>> main
     setState(() {
       _loading = true;
       _error = null;
@@ -33,7 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await AuthService.login(
         email: _emailCtrl.text.trim(),
-        password: _passwordCtrl.text.trim(),
+        password: _passwordCtrl.text,
       );
 
       if (!mounted) return;
@@ -88,6 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+<<<<<<< HEAD
                     Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
                       spacing: 10,
@@ -97,6 +127,30 @@ class _LoginScreenState extends State<LoginScreen> {
                           'assets/images/logo_transparente.png',
                           width: 50,
                           height: 50,
+=======
+                    const AppLogo(size: 50),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'FSD',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 40),
+                RichText(
+                  text: const TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'Welcome ',
+                        style: TextStyle(
+                          color: _pink,
+                          fontSize: 34,
+                          fontWeight: FontWeight.bold,
+>>>>>>> main
                         ),
                         const Text(
                           'FSD',
@@ -105,11 +159,21 @@ class _LoginScreenState extends State<LoginScreen> {
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
+<<<<<<< HEAD
                         ),
                       ],
                     ),
                     const SizedBox(height: 40),
                     RichText(
+=======
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: GestureDetector(
+                    onTap: () => context.push('/register'),
+                    child: RichText(
+>>>>>>> main
                       text: const TextSpan(
                         children: [
                           TextSpan(
