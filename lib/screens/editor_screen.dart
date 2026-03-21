@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
+import 'package:fsdmovil/services/auth_service.dart';
+import 'package:fsdmovil/services/srs_realtime_service.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF0F1017);
@@ -8,6 +11,22 @@ const _cardBg = Color(0xFF191B24);
 const _fieldBg = Color(0xFF1E2030);
 const _borderColor = Color(0xFF2A2D3A);
 const _textGrey = Color(0xFF8E8E93);
+
+class _FieldSpec {
+  final String key;
+  final String label;
+  final String hint;
+  final int maxLines;
+  final String path;
+
+  const _FieldSpec({
+    required this.key,
+    required this.label,
+    required this.hint,
+    required this.path,
+    this.maxLines = 1,
+  });
+}
 
 class EditorScreen extends StatefulWidget {
   final int projectId;
@@ -26,41 +45,21 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Map<String, dynamic>? fullResponse;
   Map<String, dynamic>? srs;
+  String? serverUpdatedAt;
 
-  // PORTADA
-  final TextEditingController projectNameController = TextEditingController();
-  final TextEditingController versionController = TextEditingController();
-  final TextEditingController dateController = TextEditingController();
-  final TextEditingController authorController = TextEditingController();
-  final TextEditingController organizationController = TextEditingController();
+  bool _connected = false;
+  bool _syncing = false;
+  bool _applyingRemote = false;
+  String? _lastRealtimeMessage;
+  String? _conflictMessage;
 
-  // INTRODUCCIÓN
-  final TextEditingController purposeController = TextEditingController();
-  final TextEditingController scopeController = TextEditingController();
-  final TextEditingController overviewController = TextEditingController();
-  final TextEditingController referencesController = TextEditingController();
-  final TextEditingController definitionsController = TextEditingController();
+  SrsRealtimeService? _realtimeService;
+  Timer? _debounceTimer;
 
-  // DESCRIPCIÓN GENERAL
-  final TextEditingController productPerspectiveController =
-      TextEditingController();
-  final TextEditingController productFunctionsController =
-      TextEditingController();
-  final TextEditingController userClassesController = TextEditingController();
-  final TextEditingController operatingEnvironmentController =
-      TextEditingController();
-  final TextEditingController constraintsController = TextEditingController();
-  final TextEditingController assumptionsController = TextEditingController();
-
-  // REQUISITOS ESPECÍFICOS
-  final TextEditingController externalInterfacesController =
-      TextEditingController();
-  final TextEditingController functionalRequirementsController =
-      TextEditingController();
-  final TextEditingController nonFunctionalRequirementsController =
-      TextEditingController();
-  final TextEditingController businessRulesController = TextEditingController();
-  final TextEditingController useCasesController = TextEditingController();
+  final Map<String, TextEditingController> _controllers = {};
+  final Map<String, FocusNode> _focusNodes = {};
+  final Map<int, PresenceUser> _connectedUsers = {};
+  final Map<int, FieldPresence> _fieldPresenceByUser = {};
 
   final List<Map<String, String>> sections = const [
     {'value': 'portada', 'label': '1. Portada'},
@@ -69,38 +68,212 @@ class _EditorScreenState extends State<EditorScreen> {
     {'value': 'requisitos', 'label': '4. Requisitos Específicos'},
   ];
 
+  late final Map<String, List<_FieldSpec>> sectionSpecs;
+
   @override
   void initState() {
     super.initState();
+    _buildSpecs();
+    _initializeFields();
     loadSrs();
+  }
+
+  void _buildSpecs() {
+    sectionSpecs = {
+      'portada': const [
+        _FieldSpec(
+          key: 'projectName',
+          label: 'Nombre del Proyecto',
+          hint: 'Ingrese nombre del proyecto',
+          path: 'metadata.projectName',
+        ),
+        _FieldSpec(
+          key: 'version',
+          label: 'Versión',
+          hint: 'Ingrese versión',
+          path: 'metadata.version',
+        ),
+        _FieldSpec(
+          key: 'date',
+          label: 'Fecha',
+          hint: 'dd/mm/aaaa',
+          path: 'metadata.createdAt',
+        ),
+        _FieldSpec(
+          key: 'author',
+          label: 'Autor(es)',
+          hint: 'Ingrese autor(es)',
+          path: 'metadata.owner',
+        ),
+        _FieldSpec(
+          key: 'organization',
+          label: 'Organización',
+          hint: 'Ingrese organización',
+          path: 'metadata.organization',
+        ),
+      ],
+      'introduccion': const [
+        _FieldSpec(
+          key: 'purpose',
+          label: 'Propósito',
+          hint: 'Ingrese el propósito',
+          path: 'introduction.purpose',
+          maxLines: 4,
+        ),
+        _FieldSpec(
+          key: 'scope',
+          label: 'Alcance',
+          hint: 'Ingrese el alcance',
+          path: 'introduction.scope',
+          maxLines: 4,
+        ),
+        _FieldSpec(
+          key: 'overview',
+          label: 'Visión General',
+          hint: 'Ingrese la visión general',
+          path: 'introduction.overview',
+          maxLines: 4,
+        ),
+        _FieldSpec(
+          key: 'references',
+          label: 'Referencias',
+          hint: 'Una referencia por línea',
+          path: 'introduction.references',
+          maxLines: 5,
+        ),
+        _FieldSpec(
+          key: 'definitions',
+          label: 'Definiciones, Acrónimos y Abreviaturas',
+          hint: 'Formato: Término: Definición',
+          path: 'introduction.definitions',
+          maxLines: 6,
+        ),
+      ],
+      'descripcion': const [
+        _FieldSpec(
+          key: 'productPerspective',
+          label: 'Perspectiva del Producto',
+          hint: 'Ingrese la perspectiva del producto',
+          path: 'overallDescription.productPerspective',
+          maxLines: 4,
+        ),
+        _FieldSpec(
+          key: 'productFunctions',
+          label: 'Funciones del Producto',
+          hint: 'Ingrese las funciones del producto',
+          path: 'overallDescription.productFunctions',
+          maxLines: 4,
+        ),
+        _FieldSpec(
+          key: 'userClasses',
+          label: 'Clases de Usuario',
+          hint: 'Formato: id | nombre | descripción | características',
+          path: 'overallDescription.userClasses',
+          maxLines: 6,
+        ),
+        _FieldSpec(
+          key: 'operatingEnvironment',
+          label: 'Entorno Operativo',
+          hint: 'Ingrese el entorno operativo',
+          path: 'overallDescription.operatingEnvironment',
+          maxLines: 4,
+        ),
+        _FieldSpec(
+          key: 'constraints',
+          label: 'Restricciones',
+          hint: 'Ingrese restricciones',
+          path: 'overallDescription.constraints',
+          maxLines: 4,
+        ),
+        _FieldSpec(
+          key: 'assumptions',
+          label: 'Suposiciones y Dependencias',
+          hint: 'Ingrese suposiciones y dependencias',
+          path: 'overallDescription.assumptions',
+          maxLines: 4,
+        ),
+      ],
+      'requisitos': const [
+        _FieldSpec(
+          key: 'externalInterfaces',
+          label: 'Interfaces Externas',
+          hint: 'Ingrese las interfaces externas',
+          path: 'specificRequirements.externalInterfaces',
+          maxLines: 4,
+        ),
+        _FieldSpec(
+          key: 'functionalRequirements',
+          label: 'Requisitos Funcionales',
+          hint: 'Un requisito por línea',
+          path: 'specificRequirements.functionalRequirements',
+          maxLines: 6,
+        ),
+        _FieldSpec(
+          key: 'nonFunctionalRequirements',
+          label: 'Requisitos No Funcionales',
+          hint: 'Un requisito por línea',
+          path: 'specificRequirements.nonFunctionalRequirements',
+          maxLines: 6,
+        ),
+        _FieldSpec(
+          key: 'businessRules',
+          label: 'Reglas de Negocio',
+          hint: 'Una regla por línea',
+          path: 'specificRequirements.businessRules',
+          maxLines: 6,
+        ),
+        _FieldSpec(
+          key: 'useCases',
+          label: 'Casos de Uso',
+          hint: 'Un caso de uso por línea',
+          path: 'specificRequirements.useCases',
+          maxLines: 6,
+        ),
+      ],
+    };
+  }
+
+  void _initializeFields() {
+    for (final specs in sectionSpecs.values) {
+      for (final field in specs) {
+        final controller = TextEditingController();
+        final focusNode = FocusNode();
+
+        controller.addListener(() {
+          if (_applyingRemote) return;
+          _scheduleRealtimeSync();
+        });
+
+        focusNode.addListener(() {
+          if (_realtimeService == null) return;
+
+          if (focusNode.hasFocus) {
+            _realtimeService!.sendFieldFocus(
+              path: field.path,
+              label: field.label,
+            );
+          } else {
+            _realtimeService!.sendFieldBlur(path: field.path);
+          }
+        });
+
+        _controllers[field.key] = controller;
+        _focusNodes[field.key] = focusNode;
+      }
+    }
   }
 
   @override
   void dispose() {
-    projectNameController.dispose();
-    versionController.dispose();
-    dateController.dispose();
-    authorController.dispose();
-    organizationController.dispose();
+    _debounceTimer?.cancel();
+    _realtimeService?.disconnect();
 
-    purposeController.dispose();
-    scopeController.dispose();
-    overviewController.dispose();
-    referencesController.dispose();
-    definitionsController.dispose();
-
-    productPerspectiveController.dispose();
-    productFunctionsController.dispose();
-    userClassesController.dispose();
-    operatingEnvironmentController.dispose();
-    constraintsController.dispose();
-    assumptionsController.dispose();
-
-    externalInterfacesController.dispose();
-    functionalRequirementsController.dispose();
-    nonFunctionalRequirementsController.dispose();
-    businessRulesController.dispose();
-    useCasesController.dispose();
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    for (final focusNode in _focusNodes.values) {
+      focusNode.dispose();
+    }
 
     super.dispose();
   }
@@ -110,67 +283,7 @@ class _EditorScreenState extends State<EditorScreen> {
       final data = await ApiService.getProjectSrs(widget.projectId);
       final srsData = Map<String, dynamic>.from(data['srs_data'] ?? {});
 
-      final metadata = Map<String, dynamic>.from(srsData['metadata'] ?? {});
-      final introduction = Map<String, dynamic>.from(
-        srsData['introduction'] ?? {},
-      );
-      final overallDescription = Map<String, dynamic>.from(
-        srsData['overallDescription'] ?? {},
-      );
-      final specificRequirements = Map<String, dynamic>.from(
-        srsData['specificRequirements'] ?? {},
-      );
-
-      // PORTADA
-      projectNameController.text = _safeText(metadata['projectName']);
-      versionController.text = _safeText(data['version'], fallback: '1.0');
-      dateController.text = _safeText(metadata['createdAt']);
-      authorController.text = _safeText(metadata['owner']);
-      organizationController.text = _safeText(metadata['organization']);
-
-      // INTRODUCCIÓN
-      purposeController.text = _safeText(introduction['purpose']);
-      scopeController.text = _safeText(introduction['scope']);
-      overviewController.text = _safeText(introduction['overview']);
-      referencesController.text = _listToMultiline(
-        List.from(introduction['references'] ?? []),
-      );
-      definitionsController.text = _definitionsToText(
-        List.from(introduction['definitions'] ?? []),
-      );
-
-      // DESCRIPCIÓN GENERAL
-      productPerspectiveController.text = _safeText(
-        overallDescription['productPerspective'],
-      );
-      productFunctionsController.text = _safeText(
-        overallDescription['productFunctions'],
-      );
-      userClassesController.text = _userClassesToText(
-        List.from(overallDescription['userClasses'] ?? []),
-      );
-      operatingEnvironmentController.text = _safeText(
-        overallDescription['operatingEnvironment'],
-      );
-      constraintsController.text = _safeText(overallDescription['constraints']);
-      assumptionsController.text = _safeText(overallDescription['assumptions']);
-
-      // REQUISITOS ESPECÍFICOS
-      externalInterfacesController.text = _safeText(
-        specificRequirements['externalInterfaces'],
-      );
-      functionalRequirementsController.text = _listToMultiline(
-        List.from(specificRequirements['functionalRequirements'] ?? []),
-      );
-      nonFunctionalRequirementsController.text = _listToMultiline(
-        List.from(specificRequirements['nonFunctionalRequirements'] ?? []),
-      );
-      businessRulesController.text = _listToMultiline(
-        List.from(specificRequirements['businessRules'] ?? []),
-      );
-      useCasesController.text = _listToMultiline(
-        List.from(specificRequirements['useCases'] ?? []),
-      );
+      _applySrsDataToControllers(srsData);
 
       setState(() {
         fullResponse = data;
@@ -178,12 +291,208 @@ class _EditorScreenState extends State<EditorScreen> {
         loading = false;
         errorMessage = null;
       });
+
+      await _connectRealtime();
     } catch (e) {
       setState(() {
         loading = false;
         errorMessage = e.toString();
       });
     }
+  }
+
+  Future<void> _connectRealtime() async {
+    _realtimeService?.disconnect();
+
+    _realtimeService = SrsRealtimeService(
+      projectId: widget.projectId,
+      onOpen: () {
+        if (!mounted) return;
+        setState(() {
+          _connected = true;
+          _lastRealtimeMessage = 'Colaboración en tiempo real conectada';
+        });
+      },
+      onClose: () {
+        if (!mounted) return;
+        setState(() {
+          _connected = false;
+        });
+      },
+      onError: (message) {
+        if (!mounted) return;
+        setState(() {
+          _lastRealtimeMessage = message;
+        });
+      },
+      onSessionJoined: (payload) {
+        if (!mounted) return;
+        _applyingRemote = true;
+        _applySrsDataToControllers(payload.srsData);
+        _applyingRemote = false;
+
+        setState(() {
+          srs = payload.srsData;
+          serverUpdatedAt = payload.updatedAt;
+          _connectedUsers
+            ..clear()
+            ..addEntries(payload.connectedUsers.map((u) => MapEntry(u.id, u)));
+          _lastRealtimeMessage =
+              'Sesión colaborativa iniciada con ${payload.connectedUsers.length} usuario(s)';
+        });
+      },
+      onSync: (payload) {
+        if (!mounted) return;
+        _applyingRemote = true;
+        _applySrsDataToControllers(payload.srsData);
+        _applyingRemote = false;
+
+        setState(() {
+          srs = payload.srsData;
+          serverUpdatedAt = payload.updatedAt;
+          _syncing = false;
+          _conflictMessage = null;
+          _lastRealtimeMessage = payload.updatedBy != null
+              ? 'Actualizado por ${payload.updatedBy!.name}'
+              : 'Documento sincronizado';
+        });
+      },
+      onConflict: (payload) {
+        if (!mounted) return;
+        setState(() {
+          _syncing = false;
+          _conflictMessage =
+              payload.detail ??
+              'Hubo un conflicto porque el documento cambió en el servidor.';
+          _lastRealtimeMessage = _conflictMessage;
+        });
+
+        _showConflictDialog(
+          serverSrsData: payload.serverSrsData,
+          serverUpdatedAt: payload.serverUpdatedAt,
+          updatedBy: payload.updatedBy?.name,
+        );
+      },
+      onPresenceJoin: (user) {
+        if (!mounted) return;
+        setState(() {
+          _connectedUsers[user.id] = user;
+        });
+      },
+      onPresenceLeave: (userId) {
+        if (!mounted) return;
+        setState(() {
+          _connectedUsers.remove(userId);
+          _fieldPresenceByUser.remove(userId);
+        });
+      },
+      onFieldFocus: (presence) {
+        if (!mounted) return;
+        final myId = AuthService.userId;
+        if (myId != null && myId == presence.user.id) return;
+
+        setState(() {
+          _connectedUsers[presence.user.id] = presence.user;
+          _fieldPresenceByUser[presence.user.id] = presence;
+        });
+      },
+      onFieldBlur: (userId, path, mode) {
+        if (!mounted) return;
+        setState(() {
+          _fieldPresenceByUser.remove(userId);
+        });
+      },
+    );
+
+    await _realtimeService!.connect();
+  }
+
+  void _applySrsDataToControllers(Map<String, dynamic> srsData) {
+    final metadata = Map<String, dynamic>.from(srsData['metadata'] ?? {});
+    final introduction = Map<String, dynamic>.from(
+      srsData['introduction'] ?? {},
+    );
+    final overallDescription = Map<String, dynamic>.from(
+      srsData['overallDescription'] ?? {},
+    );
+    final specificRequirements = Map<String, dynamic>.from(
+      srsData['specificRequirements'] ?? {},
+    );
+
+    _setText('projectName', _safeText(metadata['projectName']));
+    _setText(
+      'version',
+      _safeText(
+        srsData['version'],
+        fallback: _safeText(fullResponse?['version'], fallback: '1.0'),
+      ),
+    );
+    _setText('date', _safeText(metadata['createdAt']));
+    _setText('author', _safeText(metadata['owner']));
+    _setText('organization', _safeText(metadata['organization']));
+
+    _setText('purpose', _safeText(introduction['purpose']));
+    _setText('scope', _safeText(introduction['scope']));
+    _setText('overview', _safeText(introduction['overview']));
+    _setText(
+      'references',
+      _listToMultiline(List.from(introduction['references'] ?? [])),
+    );
+    _setText(
+      'definitions',
+      _definitionsToText(List.from(introduction['definitions'] ?? [])),
+    );
+
+    _setText(
+      'productPerspective',
+      _safeText(overallDescription['productPerspective']),
+    );
+    _setText(
+      'productFunctions',
+      _safeText(overallDescription['productFunctions']),
+    );
+    _setText(
+      'userClasses',
+      _userClassesToText(List.from(overallDescription['userClasses'] ?? [])),
+    );
+    _setText(
+      'operatingEnvironment',
+      _safeText(overallDescription['operatingEnvironment']),
+    );
+    _setText('constraints', _safeText(overallDescription['constraints']));
+    _setText('assumptions', _safeText(overallDescription['assumptions']));
+
+    _setText(
+      'externalInterfaces',
+      _safeText(specificRequirements['externalInterfaces']),
+    );
+    _setText(
+      'functionalRequirements',
+      _listToMultiline(
+        List.from(specificRequirements['functionalRequirements'] ?? []),
+      ),
+    );
+    _setText(
+      'nonFunctionalRequirements',
+      _listToMultiline(
+        List.from(specificRequirements['nonFunctionalRequirements'] ?? []),
+      ),
+    );
+    _setText(
+      'businessRules',
+      _listToMultiline(List.from(specificRequirements['businessRules'] ?? [])),
+    );
+    _setText(
+      'useCases',
+      _listToMultiline(List.from(specificRequirements['useCases'] ?? [])),
+    );
+  }
+
+  void _setText(String key, String value) {
+    final controller = _controllers[key];
+    if (controller == null) return;
+    if (controller.text == value) return;
+    controller.text = value;
   }
 
   String _safeText(dynamic value, {String fallback = ''}) {
@@ -267,6 +576,173 @@ class _EditorScreenState extends State<EditorScreen> {
     }).toList();
   }
 
+  Map<String, dynamic> _buildSrsFromControllers() {
+    return {
+      'metadata': {
+        'projectName': _controllers['projectName']!.text.trim(),
+        'createdAt': _controllers['date']!.text.trim(),
+        'owner': _controllers['author']!.text.trim(),
+        'organization': _controllers['organization']!.text.trim(),
+      },
+      'introduction': {
+        'purpose': _controllers['purpose']!.text.trim(),
+        'scope': _controllers['scope']!.text.trim(),
+        'overview': _controllers['overview']!.text.trim(),
+        'references': _multilineToList(_controllers['references']!.text.trim()),
+        'definitions': _textToDefinitions(
+          _controllers['definitions']!.text.trim(),
+        ),
+      },
+      'overallDescription': {
+        'productPerspective': _controllers['productPerspective']!.text.trim(),
+        'productFunctions': _controllers['productFunctions']!.text.trim(),
+        'userClasses': _textToUserClasses(
+          _controllers['userClasses']!.text.trim(),
+        ),
+        'operatingEnvironment': _controllers['operatingEnvironment']!.text
+            .trim(),
+        'constraints': _controllers['constraints']!.text.trim(),
+        'assumptions': _controllers['assumptions']!.text.trim(),
+      },
+      'specificRequirements': {
+        'externalInterfaces': _controllers['externalInterfaces']!.text.trim(),
+        'functionalRequirements': _multilineToList(
+          _controllers['functionalRequirements']!.text.trim(),
+        ),
+        'nonFunctionalRequirements': _multilineToList(
+          _controllers['nonFunctionalRequirements']!.text.trim(),
+        ),
+        'businessRules': _multilineToList(
+          _controllers['businessRules']!.text.trim(),
+        ),
+        'useCases': _multilineToList(_controllers['useCases']!.text.trim()),
+      },
+    };
+  }
+
+  void _scheduleRealtimeSync() {
+    if (_applyingRemote) return;
+    if (_realtimeService == null || !_realtimeService!.isConnected) return;
+
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 700), () {
+      final updatedSrs = _buildSrsFromControllers();
+      setState(() {
+        _syncing = true;
+        srs = updatedSrs;
+      });
+
+      _realtimeService!.sendSrsUpdate(
+        srsData: updatedSrs,
+        baseUpdatedAt: serverUpdatedAt,
+      );
+    });
+  }
+
+  Future<void> saveChanges() async {
+    try {
+      setState(() {
+        saving = true;
+      });
+
+      final updatedSrs = _buildSrsFromControllers();
+
+      await ApiService.updateProjectSrs(widget.projectId, {
+        'srs_data': updatedSrs,
+      });
+
+      setState(() {
+        srs = updatedSrs;
+        _lastRealtimeMessage = 'Cambios guardados manualmente';
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cambios guardados correctamente'),
+          backgroundColor: _pink,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al guardar: $e'), backgroundColor: _pink),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        saving = false;
+      });
+    }
+  }
+
+  Future<void> _showConflictDialog({
+    required Map<String, dynamic> serverSrsData,
+    required String? serverUpdatedAt,
+    required String? updatedBy,
+  }) async {
+    if (!mounted) return;
+
+    final useServer =
+        await showDialog<bool>(
+          context: context,
+          builder: (ctx) {
+            return AlertDialog(
+              backgroundColor: _cardBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              title: const Text(
+                'Conflicto detectado',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: Text(
+                updatedBy == null || updatedBy.isEmpty
+                    ? 'Otro cambio llegó desde el servidor antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?'
+                    : '$updatedBy cambió el documento antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?',
+                style: const TextStyle(color: _textGrey, height: 1.45),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text(
+                    'Mantener mi vista',
+                    style: TextStyle(color: _textGrey),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _pink,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Cargar servidor'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+
+    if (!useServer) return;
+
+    _applyingRemote = true;
+    _applySrsDataToControllers(serverSrsData);
+    _applyingRemote = false;
+
+    setState(() {
+      srs = serverSrsData;
+      this.serverUpdatedAt = serverUpdatedAt;
+      _conflictMessage = null;
+      _lastRealtimeMessage = 'Se cargó la versión más reciente del servidor';
+    });
+  }
+
   InputDecoration inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
@@ -300,499 +776,407 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget buildSingleField({
-    required String label,
-    required TextEditingController controller,
-    required String hint,
-    int maxLines = 1,
-  }) {
+  Widget buildSingleField(_FieldSpec field) {
+    final controller = _controllers[field.key]!;
+    final focusNode = _focusNodes[field.key]!;
+
+    final activePresence = _fieldPresenceByUser.values.where(
+      (p) => p.path == field.path,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        buildFieldLabel(label),
+        buildFieldLabel(field.label),
         const SizedBox(height: 10),
+        if (activePresence.isNotEmpty) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: activePresence.map((presence) {
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0x22E8365D),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0x55E8365D)),
+                ),
+                child: Text(
+                  '${presence.user.name} está aquí',
+                  style: const TextStyle(
+                    color: _pink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+        ],
         TextField(
           controller: controller,
-          maxLines: maxLines,
+          focusNode: focusNode,
+          maxLines: field.maxLines,
           style: const TextStyle(color: Colors.white),
-          decoration: inputDecoration(hint),
+          decoration: inputDecoration(field.hint),
         ),
       ],
     );
   }
 
-  Future<void> saveChanges() async {
-    if (srs == null || fullResponse == null) return;
-
-    try {
-      setState(() {
-        saving = true;
-      });
-
-      final updatedSrs = Map<String, dynamic>.from(srs!);
-
-      // PORTADA
-      final metadata = Map<String, dynamic>.from(updatedSrs['metadata'] ?? {});
-      metadata['projectName'] = projectNameController.text.trim();
-      metadata['createdAt'] = dateController.text.trim();
-      metadata['owner'] = authorController.text.trim();
-      metadata['organization'] = organizationController.text.trim();
-      updatedSrs['metadata'] = metadata;
-
-      // INTRODUCCIÓN
-      final introduction = Map<String, dynamic>.from(
-        updatedSrs['introduction'] ?? {},
-      );
-      introduction['purpose'] = purposeController.text.trim();
-      introduction['scope'] = scopeController.text.trim();
-      introduction['overview'] = overviewController.text.trim();
-      introduction['references'] = _multilineToList(
-        referencesController.text.trim(),
-      );
-      introduction['definitions'] = _textToDefinitions(
-        definitionsController.text.trim(),
-      );
-      updatedSrs['introduction'] = introduction;
-
-      // DESCRIPCIÓN GENERAL
-      final overallDescription = Map<String, dynamic>.from(
-        updatedSrs['overallDescription'] ?? {},
-      );
-      overallDescription['productPerspective'] = productPerspectiveController
-          .text
-          .trim();
-      overallDescription['productFunctions'] = productFunctionsController.text
-          .trim();
-      overallDescription['userClasses'] = _textToUserClasses(
-        userClassesController.text.trim(),
-      );
-      overallDescription['operatingEnvironment'] =
-          operatingEnvironmentController.text.trim();
-      overallDescription['constraints'] = constraintsController.text.trim();
-      overallDescription['assumptions'] = assumptionsController.text.trim();
-      updatedSrs['overallDescription'] = overallDescription;
-
-      // REQUISITOS ESPECÍFICOS
-      final specificRequirements = Map<String, dynamic>.from(
-        updatedSrs['specificRequirements'] ?? {},
-      );
-      specificRequirements['externalInterfaces'] = externalInterfacesController
-          .text
-          .trim();
-      specificRequirements['functionalRequirements'] = _multilineToList(
-        functionalRequirementsController.text.trim(),
-      );
-      specificRequirements['nonFunctionalRequirements'] = _multilineToList(
-        nonFunctionalRequirementsController.text.trim(),
-      );
-      specificRequirements['businessRules'] = _multilineToList(
-        businessRulesController.text.trim(),
-      );
-      specificRequirements['useCases'] = _multilineToList(
-        useCasesController.text.trim(),
-      );
-      updatedSrs['specificRequirements'] = specificRequirements;
-
-      final body = {
-        'project_id': fullResponse!['project_id'],
-        'project_code': fullResponse!['project_code'],
-        'version': versionController.text.trim().isEmpty
-            ? '1.0'
-            : versionController.text.trim(),
-        'srs_data': updatedSrs,
-      };
-
-      await ApiService.updateProjectSrs(widget.projectId, body);
-
-      setState(() {
-        srs = updatedSrs;
-      });
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cambios guardados correctamente')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
-    } finally {
-      if (mounted) {
-        setState(() {
-          saving = false;
-        });
-      }
-    }
-  }
-
-  Widget buildPortadaFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        buildSingleField(
-          label: 'Nombre del Proyecto',
-          controller: projectNameController,
-          hint: 'Ingrese nombre del proyecto',
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Versión',
-          controller: versionController,
-          hint: 'Ingrese versión',
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Fecha',
-          controller: dateController,
-          hint: 'dd/mm/aaaa',
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Autor(es)',
-          controller: authorController,
-          hint: 'Ingrese autor(es)',
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Organización',
-          controller: organizationController,
-          hint: 'Ingrese organización',
-        ),
-      ],
-    );
-  }
-
-  Widget buildIntroduccionFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        buildSingleField(
-          label: 'Propósito',
-          controller: purposeController,
-          hint: 'Ingrese el propósito',
-          maxLines: 4,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Alcance',
-          controller: scopeController,
-          hint: 'Ingrese el alcance',
-          maxLines: 4,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Visión General',
-          controller: overviewController,
-          hint: 'Ingrese la visión general',
-          maxLines: 4,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Referencias',
-          controller: referencesController,
-          hint: 'Una referencia por línea',
-          maxLines: 5,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Definiciones, Acrónimos y Abreviaturas',
-          controller: definitionsController,
-          hint: 'Formato: Término: Definición',
-          maxLines: 6,
-        ),
-      ],
-    );
-  }
-
-  Widget buildDescripcionFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        buildSingleField(
-          label: 'Perspectiva del Producto',
-          controller: productPerspectiveController,
-          hint: 'Ingrese la perspectiva del producto',
-          maxLines: 4,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Funciones del Producto',
-          controller: productFunctionsController,
-          hint: 'Ingrese las funciones del producto',
-          maxLines: 5,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Clases de Usuario',
-          controller: userClassesController,
-          hint: 'Formato: ID | Nombre | Descripción | Características',
-          maxLines: 6,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Entorno Operativo',
-          controller: operatingEnvironmentController,
-          hint: 'Ingrese el entorno operativo',
-          maxLines: 4,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Restricciones',
-          controller: constraintsController,
-          hint: 'Ingrese las restricciones',
-          maxLines: 4,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Suposiciones y Dependencias',
-          controller: assumptionsController,
-          hint: 'Ingrese las suposiciones y dependencias',
-          maxLines: 4,
-        ),
-      ],
-    );
-  }
-
-  Widget buildRequisitosFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        buildSingleField(
-          label: 'Interfaces Externas',
-          controller: externalInterfacesController,
-          hint: 'Ingrese las interfaces externas',
-          maxLines: 4,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Requisitos Funcionales',
-          controller: functionalRequirementsController,
-          hint: 'Un requisito por línea',
-          maxLines: 6,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Requisitos No Funcionales',
-          controller: nonFunctionalRequirementsController,
-          hint: 'Un requisito por línea',
-          maxLines: 6,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Reglas de Negocio',
-          controller: businessRulesController,
-          hint: 'Una regla por línea',
-          maxLines: 5,
-        ),
-        const SizedBox(height: 18),
-        buildSingleField(
-          label: 'Casos de Uso',
-          controller: useCasesController,
-          hint: 'Un caso de uso por línea',
-          maxLines: 5,
-        ),
-      ],
-    );
-  }
+  List<_FieldSpec> get _currentFields => sectionSpecs[selectedSection] ?? [];
 
   @override
   Widget build(BuildContext context) {
+    final connectedUsers = _connectedUsers.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
     return Scaffold(
       backgroundColor: _darkBg,
-      appBar: AppBar(
-        backgroundColor: _darkBg,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Editor IEEE 830',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 14),
-            child: Center(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () {
-                  context.push('/preview/${widget.projectId}');
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 9,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _pink,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.remove_red_eye_outlined,
-                        size: 17,
-                        color: Colors.white,
-                      ),
-                      SizedBox(width: 7),
-                      Text(
-                        'Previa',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0.85, 0.85),
-            radius: 0.9,
-            colors: [Color(0x1FE8365D), Colors.transparent],
-            stops: [0.0, 1.0],
-          ),
-        ),
+      body: SafeArea(
         child: loading
-            ? const Center(
-                child: CircularProgressIndicator(color: _pink),
-              )
+            ? const Center(child: CircularProgressIndicator(color: _pink))
             : errorMessage != null
             ? Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error_outline, color: _pink, size: 48),
-                      const SizedBox(height: 16),
-                      Text(
-                        errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: _textGrey),
-                      ),
-                      const SizedBox(height: 20),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            loading = true;
-                            errorMessage = null;
-                          });
-                          loadSrs();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _pink,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text('Reintentar'),
-                      ),
-                    ],
+                  child: Text(
+                    errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white),
                   ),
                 ),
               )
-            : SafeArea(
-                top: false,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
-                  children: [
-                    const Text(
-                      'Seleccionar Sección',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
+            : Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                    decoration: const BoxDecoration(
+                      border: Border(bottom: BorderSide(color: _borderColor)),
                     ),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: _fieldBg,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: _borderColor),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: selectedSection,
-                          isExpanded: true,
-                          dropdownColor: _cardBg,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => context.pop(),
                           icon: const Icon(
-                            Icons.keyboard_arrow_down,
-                            color: _textGrey,
-                          ),
-                          style: const TextStyle(
+                            Icons.arrow_back_ios_new_rounded,
                             color: Colors.white,
-                            fontSize: 15,
                           ),
-                          items: sections.map((section) {
-                            return DropdownMenuItem<String>(
-                              value: section['value'],
-                              child: Text(section['label']!),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setState(() {
-                              selectedSection = value;
-                            });
-                          },
                         ),
-                      ),
+                        const SizedBox(width: 4),
+                        const Expanded(
+                          child: Text(
+                            'Editor colaborativo SRS',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: saving ? null : saveChanges,
+                          icon: saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.save_outlined),
+                          label: Text(saving ? 'Guardando...' : 'Guardar'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _pink,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 24),
-                    if (selectedSection == 'portada') buildPortadaFields(),
-                    if (selectedSection == 'introduccion')
-                      buildIntroduccionFields(),
-                    if (selectedSection == 'descripcion')
-                      buildDescripcionFields(),
-                    if (selectedSection == 'requisitos')
-                      buildRequisitosFields(),
-                    const SizedBox(height: 28),
-                    SizedBox(
-                      height: 54,
-                      child: ElevatedButton(
-                        onPressed: saving ? null : saveChanges,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _pink,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: _pink.withOpacity(0.5),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 0,
+                  ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                      children: [
+                        _RealtimeStatusCard(
+                          connected: _connected,
+                          syncing: _syncing,
+                          lastMessage: _lastRealtimeMessage,
+                          conflictMessage: _conflictMessage,
+                          connectedUsers: connectedUsers,
                         ),
-                        child: saving
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 50,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: sections.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: 10),
+                            itemBuilder: (context, index) {
+                              final section = sections[index];
+                              final isSelected =
+                                  selectedSection == section['value'];
+
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () {
+                                  setState(() {
+                                    selectedSection = section['value']!;
+                                  });
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 220),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0x33E8365D)
+                                        : _cardBg,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isSelected ? _pink : _borderColor,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      section['label']!,
+                                      style: TextStyle(
+                                        color: isSelected
+                                            ? Colors.white
+                                            : _textGrey,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              )
-                            : const Text(
-                                'Guardar cambios',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: _cardBg,
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: _borderColor),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _sectionTitle(selectedSection),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
-                      ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Los cambios se sincronizan automáticamente cuando estás conectado.',
+                                style: TextStyle(
+                                  color: _textGrey,
+                                  height: 1.45,
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              ..._buildCurrentSectionFields(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  String _sectionTitle(String sectionValue) {
+    switch (sectionValue) {
+      case 'portada':
+        return 'Portada';
+      case 'introduccion':
+        return 'Introducción';
+      case 'descripcion':
+        return 'Descripción General';
+      case 'requisitos':
+        return 'Requisitos Específicos';
+      default:
+        return 'Sección';
+    }
+  }
+
+  List<Widget> _buildCurrentSectionFields() {
+    final widgets = <Widget>[];
+    final fields = _currentFields;
+
+    for (var i = 0; i < fields.length; i++) {
+      widgets.add(buildSingleField(fields[i]));
+      if (i != fields.length - 1) {
+        widgets.add(const SizedBox(height: 18));
+      }
+    }
+
+    return widgets;
+  }
+}
+
+class _RealtimeStatusCard extends StatelessWidget {
+  final bool connected;
+  final bool syncing;
+  final String? lastMessage;
+  final String? conflictMessage;
+  final List<PresenceUser> connectedUsers;
+
+  const _RealtimeStatusCard({
+    required this.connected,
+    required this.syncing,
+    required this.lastMessage,
+    required this.conflictMessage,
+    required this.connectedUsers,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final statusText = !connected
+        ? 'Desconectado'
+        : syncing
+        ? 'Sincronizando...'
+        : 'Conectado en tiempo real';
+
+    final statusColor = !connected
+        ? const Color(0xFFFFA94D)
+        : syncing
+        ? const Color(0xFF55A6FF)
+        : const Color(0xFF1BC47D);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: statusColor.withOpacity(0.35),
+                      blurRadius: 10,
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 10),
+              Text(
+                statusText,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+          if (lastMessage != null && lastMessage!.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              lastMessage!,
+              style: const TextStyle(
+                color: _textGrey,
+                fontSize: 13.5,
+                height: 1.45,
+              ),
+            ),
+          ],
+          if (conflictMessage != null &&
+              conflictMessage!.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0x22E8365D),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0x55E8365D)),
+              ),
+              child: Text(
+                conflictMessage!,
+                style: const TextStyle(
+                  color: _pink,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          const Text(
+            'Usuarios conectados',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (connectedUsers.isEmpty)
+            const Text(
+              'Solo tú en esta sesión por ahora.',
+              style: TextStyle(color: _textGrey, fontSize: 13.5),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: connectedUsers.map((user) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF151823),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: _borderColor),
+                  ),
+                  child: Text(
+                    user.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.8,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
       ),
     );
   }

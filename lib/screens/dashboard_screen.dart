@@ -1,297 +1,218 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:fsdmovil/router/app_router.dart';
-import 'package:fsdmovil/services/auth_service.dart';
-import 'package:fsdmovil/widgets/app_logo.dart';
+import 'package:fsdmovil/widgets/main_app_shell.dart';
+import 'package:fsdmovil/widgets/top_nav_menu.dart';
 
-const _pink = Color(0xFFE8365D);
-const _darkBg = Color(0xFF0F1017);
-const _cardBg = Color(0xFF191B24);
-const _borderColor = Color(0xFF2A2D3A);
-const _textGrey = Color(0xFF8E8E93);
-
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  Widget build(BuildContext context) {
+    return MainAppShell(
+      selectedItem: TopNavItem.workspaces,
+      eyebrow: 'Resumen',
+      titleWhite: 'Tu panel ',
+      titlePink: 'principal',
+      description:
+          'Administra espacios de trabajo, proyectos y documentación colaborativa desde tu app móvil.',
+      action: Row(
+        children: [
+          Expanded(
+            child: _PrimaryActionButton(
+              label: 'Nuevo espacio de trabajo',
+              icon: Icons.add_rounded,
+              onTap: () => context.push('/create-workspace'),
+            ),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionTitle(title: 'Accesos rápidos'),
+          const SizedBox(height: 14),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            mainAxisSpacing: 14,
+            crossAxisSpacing: 14,
+            childAspectRatio: 0.78,
+            children: [
+              _QuickAccessCard(
+                title: 'Espacios de trabajo',
+                subtitle: 'Administra entornos colaborativos',
+                icon: Icons.folder_open_rounded,
+                onTap: () => context.go('/workspaces'),
+              ),
+              _QuickAccessCard(
+                title: 'Proyectos',
+                subtitle: 'Gestiona proyectos SRS',
+                icon: Icons.inventory_2_outlined,
+                onTap: () => context.go('/projects'),
+              ),
+              _QuickAccessCard(
+                title: 'Documentos',
+                subtitle: 'Consulta documentos creados',
+                icon: Icons.description_outlined,
+                onTap: () => context.go('/documents'),
+              ),
+              _QuickAccessCard(
+                title: 'Revisiones',
+                subtitle: 'Aprueba o solicita cambios',
+                icon: Icons.rate_review_outlined,
+                onTap: () => context.go('/reviews'),
+              ),
+              _QuickAccessCard(
+                title: 'Diagramas',
+                subtitle: 'Vista reservada para diagramas',
+                icon: Icons.hub_outlined,
+                onTap: () => context.go('/diagrams'),
+              ),
+              _QuickAccessCard(
+                title: 'Historial',
+                subtitle: 'Revisa cambios y versiones',
+                icon: Icons.history_rounded,
+                onTap: () => context.go('/history'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const _SectionTitle(title: 'Flujo recomendado'),
+          const SizedBox(height: 14),
+          const _InfoTimelineCard(),
+        ],
+      ),
+    );
+  }
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
-    with SingleTickerProviderStateMixin
-    implements RouteAware {
-  bool _fabOpen = false;
-  late final AnimationController _fabCtrl;
-  late final Animation<double> _fabAnim;
+class _PrimaryActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
 
-  @override
-  void initState() {
-    super.initState();
-    _fabCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
-    _fabAnim = CurvedAnimation(parent: _fabCtrl, curve: Curves.easeOut);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = ModalRoute.of(context);
-    if (route is PageRoute) {
-      routeObserver.subscribe(this, route);
-    }
-  }
-
-  @override
-  void didPushNext() => _closeFab();
-
-  @override
-  void didPopNext() {}
-
-  @override
-  void didPush() {}
-
-  @override
-  void didPop() {}
-
-  @override
-  void dispose() {
-    routeObserver.unsubscribe(this);
-    _fabCtrl.dispose();
-    super.dispose();
-  }
-
-  void _toggleFab() {
-    setState(() => _fabOpen = !_fabOpen);
-    _fabOpen ? _fabCtrl.forward() : _fabCtrl.reverse();
-  }
-
-  void _closeFab() {
-    if (_fabOpen) {
-      setState(() => _fabOpen = false);
-      _fabCtrl.reverse();
-    }
-  }
+  const _PrimaryActionButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _darkBg,
-      appBar: AppBar(
-        backgroundColor: _darkBg,
-        surfaceTintColor: Colors.transparent,
-        scrolledUnderElevation: 0,
-        elevation: 0,
-        titleSpacing: 20,
-        title: const Row(
-          children: [
-            AppLogo(size: 34),
-            SizedBox(width: 12),
-            Text(
-              'FSD',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 20,
-              ),
+    return SizedBox(
+      height: 54,
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, color: Colors.white),
+        label: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 15,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: fsdPink,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final String title;
+
+  const _SectionTitle({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 20,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+  }
+}
+
+class _QuickAccessCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _QuickAccessCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: Ink(
+        decoration: BoxDecoration(
+          color: fsdCardBg,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: fsdBorderColor),
+          boxShadow: [
+            BoxShadow(
+              color: fsdPink.withOpacity(0.05),
+              blurRadius: 22,
+              spreadRadius: 1,
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Cerrar sesión',
-            onPressed: () async {
-              _closeFab();
-              await AuthService.logout();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
-            icon: const Icon(Icons.logout, color: Colors.white),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          ScaleTransition(
-            scale: _fabAnim,
-            child: FadeTransition(
-              opacity: _fabAnim,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  SizedBox(
-                    width: 200,
-                    child: FloatingActionButton.extended(
-                      heroTag: 'fab_workspace',
-                      onPressed: () {
-                        _closeFab();
-                        context.push('/create-workspace');
-                      },
-                      backgroundColor: const Color(0xFF242734),
-                      elevation: 4,
-                      icon: const Icon(Icons.grid_view_rounded, color: Colors.white, size: 20),
-                      label: const Text(
-                        'Crear Workspace',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: 200,
-                    child: FloatingActionButton.extended(
-                      heroTag: 'fab_project',
-                      onPressed: () {
-                        _closeFab();
-                        context.push('/create-project');
-                      },
-                      backgroundColor: _pink,
-                      elevation: 4,
-                      icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
-                      label: const Text(
-                        'Crear Proyecto',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
-          ),
-          FloatingActionButton(
-            heroTag: 'fab_main',
-            onPressed: _toggleFab,
-            backgroundColor: _pink,
-            elevation: 6,
-            child: AnimatedRotation(
-              turns: _fabOpen ? 0.125 : 0,
-              duration: const Duration(milliseconds: 220),
-              child: const Icon(Icons.add, color: Colors.white, size: 28),
-            ),
-          ),
-        ],
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0.85, 0.85),
-            radius: 0.9,
-            colors: [Color(0x1FE8365D), Colors.transparent],
-            stops: [0.0, 1.0],
-          ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 120),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'OVERVIEW',
-                style: TextStyle(
-                  color: _pink,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 2,
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: const Color(0x22E8365D),
+                  borderRadius: BorderRadius.circular(16),
                 ),
+                child: Icon(icon, color: fsdPink, size: 26),
               ),
-              const SizedBox(height: 14),
-              RichText(
-                text: const TextSpan(
-                  children: [
-                    TextSpan(
-                      text: 'Your ',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 42,
-                        height: 1.05,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    TextSpan(
-                      text: 'Dashboard',
-                      style: TextStyle(
-                        color: _pink,
-                        fontSize: 42,
-                        height: 1.05,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Manage your projects, workspaces and collaborative documentation from your mobile app.',
-                style: TextStyle(color: _textGrey, fontSize: 15, height: 1.5),
-              ),
-              const SizedBox(height: 28),
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatCard(
-                      title: 'Workspaces',
-                      value: 'Gestión',
-                      subtitle: 'Crea y administra',
-                      icon: Icons.workspaces_outline,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: _StatCard(
-                      title: 'Projects',
-                      value: 'SRS',
-                      subtitle: 'Edita documentos',
-                      icon: Icons.description_outlined,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 26),
-              const Text(
-                'Acciones rápidas',
-                style: TextStyle(
+              const SizedBox(height: 18),
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 24,
+                  fontSize: 17,
                   fontWeight: FontWeight.w800,
+                  height: 1.2,
                 ),
               ),
-              const SizedBox(height: 14),
-              _DashboardActionCard(
-                title: 'Mis Proyectos',
-                description:
-                    'Consulta todos los proyectos creados y continúa editando sus documentos.',
-                icon: Icons.folder_outlined,
-                highlighted: true,
-                onTap: () {
-                  _closeFab();
-                  context.push('/projects');
-                },
-              ),
-              const SizedBox(height: 14),
-              _DashboardActionCard(
-                title: 'Mis Workspaces',
-                description:
-                    'Organiza equipos y proyectos dentro de tus workspaces.',
-                icon: Icons.grid_view_rounded,
-                onTap: () {
-                  _closeFab();
-                  context.push('/workspaces');
-                },
-              ),
-              const SizedBox(height: 14),
-              _DashboardActionCard(
-                title: 'Proyectos Compartidos',
-                description:
-                    'Consulta proyectos colaborativos y trabajo compartido con otros usuarios.',
-                icon: Icons.group_outlined,
-                onTap: () {},
+              const SizedBox(height: 10),
+              Expanded(
+                child: Text(
+                  subtitle,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: fsdTextGrey,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
               ),
             ],
           ),
@@ -301,100 +222,38 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 }
 
-class _FabMenuItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final bool isFirst;
-  final VoidCallback onTap;
-
-  const _FabMenuItem({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.isFirst,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.vertical(
-        top: isFirst ? const Radius.circular(16) : Radius.zero,
-        bottom: !isFirst ? const Radius.circular(16) : Radius.zero,
-      ),
-      child: Container(
-        width: 200,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final String subtitle;
-  final IconData icon;
-
-  const _StatCard({
-    required this.title,
-    required this.value,
-    required this.subtitle,
-    required this.icon,
-  });
+class _InfoTimelineCard extends StatelessWidget {
+  const _InfoTimelineCard();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _borderColor),
+        color: fsdCardBg,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: fsdBorderColor),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: const Column(
         children: [
-          Icon(icon, color: _pink, size: 24),
-          const SizedBox(height: 18),
-          Text(
-            title.toUpperCase(),
-            style: const TextStyle(
-              color: _textGrey,
-              fontSize: 11,
-              letterSpacing: 1.3,
-              fontWeight: FontWeight.w700,
-            ),
+          _TimelineStep(
+            title: '1. Crear espacio de trabajo',
+            subtitle: 'Agrupa equipos y proyectos dentro de un mismo entorno.',
+            isFirst: true,
           ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-            ),
+          _TimelineStep(
+            title: '2. Crear proyecto',
+            subtitle:
+                'Asocia un proyecto al workspace correcto y define su base.',
           ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: const TextStyle(color: _textGrey, fontSize: 13),
+          _TimelineStep(
+            title: '3. Editar documento SRS',
+            subtitle: 'Completa secciones, requisitos y detalles del sistema.',
+          ),
+          _TimelineStep(
+            title: '4. Revisar historial y aprobaciones',
+            subtitle: 'Da seguimiento a cambios, versiones y revisiones.',
+            isLast: true,
           ),
         ],
       ),
@@ -402,58 +261,63 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _DashboardActionCard extends StatelessWidget {
+class _TimelineStep extends StatelessWidget {
   final String title;
-  final String description;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool highlighted;
+  final String subtitle;
+  final bool isFirst;
+  final bool isLast;
 
-  const _DashboardActionCard({
+  const _TimelineStep({
     required this.title,
-    required this.description,
-    required this.icon,
-    required this.onTap,
-    this.highlighted = false,
+    required this.subtitle,
+    this.isFirst = false,
+    this.isLast = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: highlighted ? _pink : _cardBg,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: highlighted ? _pink : _borderColor),
-          boxShadow: highlighted
-              ? [
-                  BoxShadow(
-                    color: _pink.withValues(alpha: 0.25),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 30,
+            child: Column(
+              children: [
+                if (!isFirst)
+                  Container(width: 2, height: 14, color: fsdBorderColor)
+                else
+                  const SizedBox(height: 14),
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: fsdPink,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: fsdPink.withOpacity(0.35),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
+                    ],
                   ),
-                ]
-              : [],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: highlighted
-                    ? Colors.white.withValues(alpha: 0.16)
-                    : const Color(0xFF242734),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(icon, color: Colors.white, size: 26),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.only(top: 6),
+                      color: fsdBorderColor,
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -461,34 +325,24 @@ class _DashboardActionCard extends StatelessWidget {
                     title,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
-                    description,
-                    style: TextStyle(
-                      color: highlighted
-                          ? Colors.white.withValues(alpha: 0.92)
-                          : _textGrey,
-                      fontSize: 14,
-                      height: 1.5,
+                    subtitle,
+                    style: const TextStyle(
+                      color: fsdTextGrey,
+                      fontSize: 13.5,
+                      height: 1.45,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.arrow_forward_ios_rounded,
-              color: highlighted
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.85),
-              size: 18,
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

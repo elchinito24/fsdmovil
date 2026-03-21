@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
+import 'package:fsdmovil/services/auth_service.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF0F1017);
@@ -19,9 +20,49 @@ class WorkspaceDetailScreen extends StatefulWidget {
 
 class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
   bool loading = true;
+  bool membersLoading = false;
+  bool invitationsLoading = false;
+
   String? errorMessage;
+
   Map<String, dynamic>? workspace;
   List<dynamic> projects = [];
+  List<dynamic> members = [];
+  List<dynamic> invitations = [];
+
+  String get currentUserEmail =>
+      (AuthService.userEmail ?? '').trim().toLowerCase();
+
+  bool get isOwner {
+    final owner = workspace?['owner'];
+    if (owner is Map<String, dynamic>) {
+      final ownerEmail = (owner['email'] ?? '').toString().trim().toLowerCase();
+      return ownerEmail.isNotEmpty && ownerEmail == currentUserEmail;
+    }
+    return false;
+  }
+
+  String? get currentUserRole {
+    for (final member in members) {
+      final user = member['user'];
+      if (user is Map<String, dynamic>) {
+        final email = (user['email'] ?? '').toString().trim().toLowerCase();
+        if (email == currentUserEmail) {
+          return (member['role'] ?? '').toString().toLowerCase();
+        }
+      }
+    }
+    return null;
+  }
+
+  bool get canManageMembers {
+    final role = currentUserRole;
+    return isOwner || role == 'owner' || role == 'admin';
+  }
+
+  bool get canInviteMembers {
+    return isOwner;
+  }
 
   @override
   void initState() {
@@ -31,20 +72,586 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
 
   Future<void> loadData() async {
     try {
-      final ws = await ApiService.getWorkspaceById(widget.workspaceId);
-      final pr = await ApiService.getProjectsByWorkspace(widget.workspaceId);
+      final wsFuture = ApiService.getWorkspaceById(widget.workspaceId);
+      final prFuture = ApiService.getProjectsByWorkspace(widget.workspaceId);
+      final membersFuture = ApiService.getWorkspaceMembers(widget.workspaceId);
+
+      final results = await Future.wait([wsFuture, prFuture, membersFuture]);
+
+      final ws = Map<String, dynamic>.from(results[0] as Map<String, dynamic>);
+      final pr = List<dynamic>.from(results[1] as List<dynamic>);
+      final memberList = List<dynamic>.from(results[2] as List<dynamic>);
+
+      List<dynamic> pendingInvitations = [];
+      final owner = ws['owner'];
+      bool shouldLoadInvitations = false;
+
+      if (owner is Map<String, dynamic>) {
+        final ownerEmail = (owner['email'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        shouldLoadInvitations = ownerEmail == currentUserEmail;
+      }
+
+      if (shouldLoadInvitations) {
+        try {
+          pendingInvitations = await ApiService.getWorkspaceInvitations(
+            widget.workspaceId,
+          );
+        } catch (_) {
+          pendingInvitations = [];
+        }
+      }
+
+      if (!mounted) return;
 
       setState(() {
         workspace = ws;
         projects = pr;
+        members = memberList;
+        invitations = pendingInvitations;
         loading = false;
         errorMessage = null;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         loading = false;
         errorMessage = e.toString();
       });
+    }
+  }
+
+  Future<void> _reloadMembersAndInvitations() async {
+    setState(() {
+      membersLoading = true;
+      invitationsLoading = true;
+    });
+
+    try {
+      final memberList = await ApiService.getWorkspaceMembers(
+        widget.workspaceId,
+      );
+      List<dynamic> pendingInvitations = invitations;
+
+      if (canInviteMembers) {
+        try {
+          pendingInvitations = await ApiService.getWorkspaceInvitations(
+            widget.workspaceId,
+          );
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        members = memberList;
+        invitations = pendingInvitations;
+      });
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        membersLoading = false;
+        invitationsLoading = false;
+      });
+    }
+  }
+
+  Future<void> _showInviteMemberDialog() async {
+    final emailController = TextEditingController();
+    String selectedRole = 'editor';
+    bool submitting = false;
+    String? localError;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: !submitting,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return AlertDialog(
+              backgroundColor: _cardBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              title: const Text(
+                'Invitar miembro',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: 'Correo del usuario',
+                        labelStyle: const TextStyle(color: _textGrey),
+                        hintText: 'correo@ejemplo.com',
+                        hintStyle: const TextStyle(color: _textGrey),
+                        filled: true,
+                        fillColor: const Color(0xFF151823),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: _borderColor),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: _pink),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF151823),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _borderColor),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedRole,
+                          dropdownColor: const Color(0xFF1B1E28),
+                          style: const TextStyle(color: Colors.white),
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'editor',
+                              child: Text('Editor'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'viewer',
+                              child: Text('Viewer'),
+                            ),
+                          ],
+                          onChanged: submitting
+                              ? null
+                              : (value) {
+                                  if (value == null) return;
+                                  setModalState(() {
+                                    selectedRole = value;
+                                  });
+                                },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Por ahora la invitación en móvil funciona por correo. Si ese correo ya tiene cuenta, recibirá la invitación en la plataforma. Si no tiene cuenta aún, quedará pendiente para cuando se registre.',
+                      style: TextStyle(
+                        color: _textGrey,
+                        fontSize: 13,
+                        height: 1.45,
+                      ),
+                    ),
+                    if (localError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        localError!,
+                        style: const TextStyle(
+                          color: _pink,
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.pop(ctx),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(color: _textGrey),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          final email = emailController.text
+                              .trim()
+                              .toLowerCase();
+
+                          if (email.isEmpty) {
+                            setModalState(() {
+                              localError = 'Ingresa un correo válido.';
+                            });
+                            return;
+                          }
+
+                          setModalState(() {
+                            submitting = true;
+                            localError = null;
+                          });
+
+                          try {
+                            final invitation =
+                                await ApiService.inviteWorkspaceMember(
+                                  workspaceId: widget.workspaceId,
+                                  email: email,
+                                  role: selectedRole,
+                                );
+
+                            if (!mounted) return;
+                            Navigator.pop(ctx);
+
+                            await _reloadMembersAndInvitations();
+
+                            final inviteeExists =
+                                invitation['invitee_exists'] == true;
+                            final roleText = selectedRole == 'editor'
+                                ? 'Editor'
+                                : 'Viewer';
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  inviteeExists
+                                      ? 'Invitación enviada. El usuario ya tenía cuenta y ya puede verla en la plataforma. Rol: $roleText.'
+                                      : 'Invitación creada. Ese correo aún no tenía cuenta; se procesará cuando se registre. Rol: $roleText.',
+                                ),
+                                backgroundColor: _pink,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          } catch (e) {
+                            setModalState(() {
+                              submitting = false;
+                              localError = e.toString().replaceFirst(
+                                'Exception: ',
+                                '',
+                              );
+                            });
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _pink,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: submitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Invitar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showUpdateRoleDialog(dynamic member) async {
+    final currentRole = (member['role'] ?? 'viewer').toString().toLowerCase();
+    String selectedRole = currentRole;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return AlertDialog(
+              backgroundColor: _cardBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              title: const Text(
+                'Cambiar rol',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF151823),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: _borderColor),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: selectedRole,
+                    dropdownColor: const Color(0xFF1B1E28),
+                    style: const TextStyle(color: Colors.white),
+                    isExpanded: true,
+                    items: const [
+                      DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                      DropdownMenuItem(value: 'editor', child: Text('Editor')),
+                      DropdownMenuItem(value: 'viewer', child: Text('Viewer')),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setModalState(() {
+                        selectedRole = value;
+                      });
+                    },
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(color: _textGrey),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    try {
+                      await ApiService.updateWorkspaceMemberRole(
+                        workspaceId: widget.workspaceId,
+                        memberId: member['id'] as int,
+                        role: selectedRole,
+                      );
+
+                      if (!mounted) return;
+                      Navigator.pop(ctx);
+
+                      await _reloadMembersAndInvitations();
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Rol actualizado correctamente'),
+                          backgroundColor: _pink,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            e.toString().replaceFirst('Exception: ', ''),
+                          ),
+                          backgroundColor: _pink,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _pink,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _removeMember(dynamic member) async {
+    final user = member['user'] as Map<String, dynamic>? ?? {};
+    final name = _buildUserName(user);
+
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: _cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            title: const Text(
+              'Eliminar miembro',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            content: Text(
+              '¿Seguro que quieres eliminar a $name del workspace?',
+              style: const TextStyle(color: _textGrey),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(color: _textGrey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Eliminar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
+
+    try {
+      await ApiService.removeWorkspaceMember(
+        workspaceId: widget.workspaceId,
+        memberId: member['id'] as int,
+      );
+
+      if (!mounted) return;
+
+      await _reloadMembersAndInvitations();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Miembro eliminado correctamente'),
+          backgroundColor: _pink,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: _pink,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _cancelInvitation(dynamic invitation) async {
+    final id = invitation['id'] as int;
+    final email = (invitation['email'] ?? '').toString();
+
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: _cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            title: const Text(
+              'Cancelar invitación',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            content: Text(
+              '¿Seguro que quieres cancelar la invitación enviada a $email?',
+              style: const TextStyle(color: _textGrey),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('No', style: TextStyle(color: _textGrey)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Sí, cancelar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
+
+    try {
+      await ApiService.cancelWorkspaceInvitation(
+        workspaceId: widget.workspaceId,
+        invitationId: id,
+      );
+
+      if (!mounted) return;
+
+      await _reloadMembersAndInvitations();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invitación cancelada'),
+          backgroundColor: _pink,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: _pink,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  String _buildUserName(Map<String, dynamic> user) {
+    final first = (user['first_name'] ?? '').toString().trim();
+    final last = (user['last_name'] ?? '').toString().trim();
+    final full = '$first $last'.trim();
+    if (full.isNotEmpty) return full;
+    final email = (user['email'] ?? '').toString().trim();
+    if (email.isNotEmpty) return email;
+    return 'Usuario';
+  }
+
+  String _roleLabel(String role) {
+    switch (role.toLowerCase()) {
+      case 'owner':
+        return 'Owner';
+      case 'admin':
+        return 'Admin';
+      case 'editor':
+        return 'Editor';
+      case 'viewer':
+        return 'Viewer';
+      default:
+        return role;
+    }
+  }
+
+  Color _roleColor(String role) {
+    switch (role.toLowerCase()) {
+      case 'owner':
+        return const Color(0xFF1BC47D);
+      case 'admin':
+        return const Color(0xFF55A6FF);
+      case 'editor':
+        return const Color(0xFFFFC857);
+      case 'viewer':
+        return _textGrey;
+      default:
+        return _textGrey;
     }
   }
 
@@ -53,238 +660,741 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
     final workspaceName = workspace?['name']?.toString() ?? 'Workspace';
     final description =
         workspace?['description']?.toString() ?? 'Sin descripción';
-    final memberCount = workspace?['member_count']?.toString() ?? '0';
+    final memberCount = members.length.toString();
     final projectCount = workspace?['project_count']?.toString() ?? '0';
 
     return Scaffold(
       backgroundColor: _darkBg,
-      appBar: AppBar(
-        backgroundColor: _darkBg,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Workspace',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: _pink,
-        foregroundColor: Colors.white,
-        onPressed: () async {
-          await context.push('/create-project');
-          if (mounted) {
-            setState(() {
-              loading = true;
-            });
-            loadData();
-          }
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Nuevo Proyecto'),
-      ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator(color: _pink))
-          : errorMessage != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text(
-                  errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white),
-                ),
+      floatingActionButton: projects.isEmpty
+          ? FloatingActionButton.extended(
+              backgroundColor: _pink,
+              foregroundColor: Colors.white,
+              onPressed: () => context.push('/create-project'),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'Nuevo proyecto',
+                style: TextStyle(fontWeight: FontWeight.w800),
               ),
             )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
+          : null,
+      body: SafeArea(
+        child: loading
+            ? const Center(child: CircularProgressIndicator(color: _pink))
+            : errorMessage != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              )
+            : RefreshIndicator(
+                color: _pink,
+                onRefresh: loadData,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+                  children: [
+                    GestureDetector(
+                      onTap: () => context.pop(),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.arrow_back_ios_new,
+                            color: _textGrey,
+                            size: 16,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Volver a espacios de trabajo',
+                            style: TextStyle(color: _textGrey, fontSize: 15),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      workspaceName,
+                      style: const TextStyle(
+                        color: _pink,
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      description,
+                      style: const TextStyle(color: _textGrey, fontSize: 16),
+                    ),
+                    const SizedBox(height: 24),
+                    if (canInviteMembers)
+                      SizedBox(
+                        width: 190,
+                        child: OutlinedButton(
+                          onPressed: _showInviteMemberDialog,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: _borderColor),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: const Text(
+                            'Invitar miembro',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                    if (canInviteMembers) const SizedBox(height: 22),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _InfoCard(
+                            title: 'Miembros',
+                            value: memberCount,
+                            subtitle: 'Ver lista de miembros',
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: _InfoCard(
+                            title: 'Proyectos',
+                            value: projectCount,
+                            subtitle: 'Dentro del workspace',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 26),
+                    _SectionHeader(
+                      title: 'Miembros',
+                      trailing: membersLoading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                color: _pink,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : null,
+                    ),
+                    const SizedBox(height: 14),
+                    if (members.isEmpty)
+                      const _EmptyStateCard(
+                        icon: Icons.people_outline_rounded,
+                        title: 'No hay miembros',
+                        subtitle:
+                            'Aquí aparecerán los usuarios que formen parte de este workspace.',
+                      )
+                    else
+                      ...members.map((member) {
+                        final user =
+                            member['user'] as Map<String, dynamic>? ?? {};
+                        final role = (member['role'] ?? 'viewer').toString();
+                        final memberEmail = (user['email'] ?? '')
+                            .toString()
+                            .trim()
+                            .toLowerCase();
+                        final isCurrentUser = memberEmail == currentUserEmail;
+                        final isOwnerMember = role.toLowerCase() == 'owner';
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _MemberCard(
+                            name: _buildUserName(user),
+                            email: (user['email'] ?? '').toString(),
+                            roleLabel: _roleLabel(role),
+                            roleColor: _roleColor(role),
+                            isCurrentUser: isCurrentUser,
+                            canManage: canManageMembers && !isOwnerMember,
+                            onEditRole: () => _showUpdateRoleDialog(member),
+                            onRemove: () => _removeMember(member),
+                          ),
+                        );
+                      }),
+                    if (canInviteMembers) ...[
+                      const SizedBox(height: 26),
+                      _SectionHeader(
+                        title: 'Invitaciones pendientes',
+                        trailing: invitationsLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  color: _pink,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                      if (invitations.isEmpty)
+                        const _EmptyStateCard(
+                          icon: Icons.mail_outline_rounded,
+                          title: 'No hay invitaciones pendientes',
+                          subtitle:
+                              'Cuando invites personas al workspace, aquí aparecerán mientras no acepten o rechacen.',
+                        )
+                      else
+                        ...invitations.map((invitation) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _InvitationCard(
+                              email: (invitation['email'] ?? '').toString(),
+                              roleLabel: _roleLabel(
+                                (invitation['role'] ?? '').toString(),
+                              ),
+                              invitedBy: (invitation['invited_by_name'] ?? '')
+                                  .toString(),
+                              inviteeExists:
+                                  invitation['invitee_exists'] == true,
+                              onCancel: () => _cancelInvitation(invitation),
+                            ),
+                          );
+                        }),
+                    ],
+                    const SizedBox(height: 26),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Proyectos',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () => context.push('/create-project'),
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Nuevo Proyecto'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _pink,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (projects.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: _cardBg,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: _borderColor),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(
+                              Icons.description_outlined,
+                              color: _pink,
+                              size: 34,
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'No hay proyectos aún',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Crea el primer proyecto de este espacio de trabajo.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: _textGrey, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      ...projects.map((project) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(color: _borderColor),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(21),
+                              child: Dismissible(
+                                key: ValueKey(project['id']),
+                                direction: DismissDirection.endToStart,
+                                background: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 28),
+                                  color: const Color(0xFF2A0A10),
+                                  child: const Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: _pink,
+                                        size: 28,
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Eliminar',
+                                        style: TextStyle(
+                                          color: _pink,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                confirmDismiss: (_) async {
+                                  return await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          backgroundColor: _cardBg,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                          ),
+                                          title: const Text(
+                                            'Eliminar proyecto',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          content: Text(
+                                            '¿Seguro que quieres eliminar "${project['name']}"? Esta acción no se puede deshacer.',
+                                            style: const TextStyle(
+                                              color: _textGrey,
+                                            ),
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, false),
+                                              child: const Text(
+                                                'Cancelar',
+                                                style: TextStyle(
+                                                  color: _textGrey,
+                                                ),
+                                              ),
+                                            ),
+                                            ElevatedButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, true),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: _pink,
+                                                foregroundColor: Colors.white,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                              ),
+                                              child: const Text('Eliminar'),
+                                            ),
+                                          ],
+                                        ),
+                                      ) ??
+                                      false;
+                                },
+                                onDismissed: (_) async {
+                                  final removed = project;
+                                  setState(() {
+                                    projects.removeWhere(
+                                      (p) => p['id'] == project['id'],
+                                    );
+                                  });
+                                  try {
+                                    await ApiService.deleteProject(
+                                      project['id'],
+                                    );
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error al eliminar: $e'),
+                                        backgroundColor: _pink,
+                                      ),
+                                    );
+                                    setState(() => projects.add(removed));
+                                  }
+                                },
+                                child: _ProjectCard(
+                                  project: project,
+                                  onTap: () =>
+                                      context.push('/editor/${project['id']}'),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final Widget? trailing;
+
+  const _SectionHeader({required this.title, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        if (trailing != null) trailing!,
+      ],
+    );
+  }
+}
+
+class _MemberCard extends StatelessWidget {
+  final String name;
+  final String email;
+  final String roleLabel;
+  final Color roleColor;
+  final bool isCurrentUser;
+  final bool canManage;
+  final VoidCallback onEditRole;
+  final VoidCallback onRemove;
+
+  const _MemberCard({
+    required this.name,
+    required this.email,
+    required this.roleLabel,
+    required this.roleColor,
+    required this.isCurrentUser,
+    required this.canManage,
+    required this.onEditRole,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: const Color(0x22E8365D),
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: const TextStyle(color: _pink, fontWeight: FontWeight.w900),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () => context.pop(),
-                  child: const Row(
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    if (isCurrentUser) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0x22E8365D),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Text(
+                          'Tú',
+                          style: TextStyle(
+                            color: _pink,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  email,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _textGrey, fontSize: 13.5),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: roleColor.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: roleColor.withOpacity(0.35)),
+                  ),
+                  child: Text(
+                    roleLabel,
+                    style: TextStyle(
+                      color: roleColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (canManage)
+            PopupMenuButton<String>(
+              color: const Color(0xFF1B1E28),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              onSelected: (value) {
+                if (value == 'role') onEditRole();
+                if (value == 'remove') onRemove();
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'role',
+                  child: Row(
                     children: [
                       Icon(
-                        Icons.arrow_back_ios_new,
-                        color: _textGrey,
-                        size: 16,
+                        Icons.manage_accounts_rounded,
+                        color: Colors.white,
+                        size: 18,
                       ),
-                      SizedBox(width: 6),
+                      SizedBox(width: 10),
                       Text(
-                        'Volver a Workspaces',
-                        style: TextStyle(color: _textGrey, fontSize: 15),
+                        'Cambiar rol',
+                        style: TextStyle(color: Colors.white),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                PopupMenuItem(
+                  value: 'remove',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.person_remove_alt_1_rounded,
+                        color: _pink,
+                        size: 18,
+                      ),
+                      SizedBox(width: 10),
+                      Text('Eliminar', style: TextStyle(color: _pink)),
+                    ],
+                  ),
+                ),
+              ],
+              child: const Icon(Icons.more_vert_rounded, color: _textGrey),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InvitationCard extends StatelessWidget {
+  final String email;
+  final String roleLabel;
+  final String invitedBy;
+  final bool inviteeExists;
+  final VoidCallback onCancel;
+
+  const _InvitationCard({
+    required this.email,
+    required this.roleLabel,
+    required this.invitedBy,
+    required this.inviteeExists,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(
+            radius: 24,
+            backgroundColor: Color(0x22E8365D),
+            child: Icon(Icons.mail_outline_rounded, color: _pink),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  workspaceName,
+                  email,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: _pink,
-                    fontSize: 34,
-                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15.5,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  inviteeExists
+                      ? 'Ya tiene cuenta • pendiente de responder'
+                      : 'Aún no tiene cuenta • se procesará al registrarse',
+                  style: const TextStyle(
+                    color: _textGrey,
+                    fontSize: 13.2,
+                    height: 1.35,
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  description,
-                  style: const TextStyle(color: _textGrey, fontSize: 16),
-                ),
-                const SizedBox(height: 24),
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    Expanded(
-                      child: _InfoCard(
-                        title: 'Miembros',
-                        value: memberCount,
-                        subtitle: 'Lista del equipo',
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
                       ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: _InfoCard(
-                        title: 'Proyectos',
-                        value: projectCount,
-                        subtitle: 'Dentro del workspace',
+                      decoration: BoxDecoration(
+                        color: const Color(0x22FFC857),
+                        borderRadius: BorderRadius.circular(999),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 28),
-                const Text(
-                  'Proyectos',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (projects.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: _cardBg,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: _borderColor),
-                    ),
-                    child: const Text(
-                      'Este workspace no tiene proyectos todavía.',
-                      style: TextStyle(color: _textGrey, fontSize: 15),
-                    ),
-                  )
-                else
-                  ...projects.map((project) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: _borderColor),
+                      child: Text(
+                        roleLabel,
+                        style: const TextStyle(
+                          color: Color(0xFFFFC857),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(21),
-                          child: Dismissible(
-                            key: ValueKey(project['id']),
-                            direction: DismissDirection.endToStart,
-                            background: Container(
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.only(right: 28),
-                              color: const Color(0xFF2A0A10),
-                              child: const Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.delete_outline_rounded,
-                                    color: _pink,
-                                    size: 28,
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Eliminar',
-                                    style: TextStyle(
-                                      color: _pink,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            confirmDismiss: (_) async {
-                              return await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      backgroundColor: _cardBg,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      title: const Text(
-                                        'Eliminar proyecto',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      content: Text(
-                                        '¿Seguro que quieres eliminar "${project['name']}"? Esta acción no se puede deshacer.',
-                                        style: const TextStyle(color: _textGrey),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(ctx, false),
-                                          child: const Text('Cancelar',
-                                              style: TextStyle(color: _textGrey)),
-                                        ),
-                                        ElevatedButton(
-                                          onPressed: () =>
-                                              Navigator.pop(ctx, true),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: _pink,
-                                            foregroundColor: Colors.white,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                          ),
-                                          child: const Text('Eliminar'),
-                                        ),
-                                      ],
-                                    ),
-                                  ) ??
-                                  false;
-                            },
-                            onDismissed: (_) async {
-                              final removed = project;
-                              setState(() {
-                                projects.removeWhere(
-                                    (p) => p['id'] == project['id']);
-                              });
-                              try {
-                                await ApiService.deleteProject(project['id']);
-                              } catch (e) {
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Error al eliminar: $e'),
-                                    backgroundColor: _pink,
-                                  ),
-                                );
-                                setState(() => projects.add(removed));
-                              }
-                            },
-                            child: _ProjectCard(
-                              project: project,
-                              onTap: () =>
-                                  context.push('/editor/${project['id']}'),
-                            ),
+                      ),
+                    ),
+                    if (invitedBy.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0x221BC47D),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          invitedBy,
+                          style: const TextStyle(
+                            color: Color(0xFF1BC47D),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
-                    );
-                  }),
+                  ],
+                ),
               ],
             ),
+          ),
+          IconButton(
+            onPressed: onCancel,
+            icon: const Icon(Icons.close_rounded, color: _pink),
+            tooltip: 'Cancelar invitación',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyStateCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _EmptyStateCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: _pink, size: 36),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: _textGrey,
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -321,7 +1431,7 @@ class _InfoCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             value,
             style: const TextStyle(
@@ -336,7 +1446,7 @@ class _InfoCard extends StatelessWidget {
             style: const TextStyle(
               color: _pink,
               fontSize: 14,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -351,19 +1461,52 @@ class _ProjectCard extends StatelessWidget {
 
   const _ProjectCard({required this.project, required this.onTap});
 
+  String _statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'draft':
+        return 'Borrador';
+      case 'in_progress':
+        return 'En progreso';
+      case 'review':
+        return 'En revisión';
+      case 'approved':
+        return 'Aprobado';
+      case 'completed':
+        return 'Completado';
+      default:
+        return status.isEmpty ? 'Sin estado' : status;
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'draft':
+        return const Color(0xFF55A6FF);
+      case 'in_progress':
+        return const Color(0xFFFFC857);
+      case 'review':
+        return const Color(0xFFFFA94D);
+      case 'approved':
+      case 'completed':
+        return const Color(0xFF1BC47D);
+      default:
+        return _textGrey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final name = project['name']?.toString() ?? 'Proyecto';
-    final description = project['description']?.toString() ?? 'Sin descripción';
-    final template =
-        project['template_name']?.toString() ?? 'Plantilla no disponible';
-    final progress = project['progress']?.toString() ?? '0';
+    final name = (project['name'] ?? 'Proyecto').toString();
+    final description = (project['description'] ?? 'Sin descripción')
+        .toString();
+    final status = (project['status'] ?? '').toString();
+    final code = (project['code'] ?? 'Sin código').toString();
 
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(20),
-        color: _cardBg,
+        padding: const EdgeInsets.all(18),
+        decoration: const BoxDecoration(color: _cardBg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -371,57 +1514,74 @@ class _ProjectCard extends StatelessWidget {
               name,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               description,
-              style: const TextStyle(color: _textGrey, fontSize: 15),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border.all(color: _pink),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                template.toUpperCase(),
-                style: const TextStyle(
-                  color: _pink,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _textGrey,
+                fontSize: 14,
+                height: 1.4,
               ),
             ),
-            const SizedBox(height: 18),
-            Row(
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
               children: [
-                const Text(
-                  'Progress',
-                  style: TextStyle(color: _textGrey, fontSize: 14),
-                ),
-                const Spacer(),
-                Text(
-                  '$progress%',
-                  style: const TextStyle(color: _textGrey, fontSize: 14),
+                _TinyChip(icon: Icons.tag_rounded, text: code, color: _pink),
+                _TinyChip(
+                  icon: Icons.flag_outlined,
+                  text: _statusLabel(status),
+                  color: _statusColor(status),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: (double.tryParse(progress) ?? 0) / 100,
-                minHeight: 6,
-                backgroundColor: const Color(0xFF2B2E3B),
-                valueColor: const AlwaysStoppedAnimation<Color>(_pink),
-              ),
-            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TinyChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  const _TinyChip({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }

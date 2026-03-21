@@ -294,4 +294,218 @@ class ApiService {
       throw Exception('Error al obtener proyectos del workspace: $e');
     }
   }
+
+  static Future<List<dynamic>> getWorkspaceMembers(int workspaceId) async {
+    try {
+      final response = await _dio.get('/workspaces/$workspaceId/members/');
+
+      if (response.data is List) {
+        return List<dynamic>.from(response.data);
+      }
+
+      return [];
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener miembros: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener miembros: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> inviteWorkspaceMember({
+    required int workspaceId,
+    required String email,
+    required String role,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/workspaces/$workspaceId/invite/',
+        data: {'email': email.trim().toLowerCase(), 'role': role},
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al invitar miembro: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al invitar miembro: $e');
+    }
+  }
+
+  static Future<List<dynamic>> getWorkspaceInvitations(int workspaceId) async {
+    try {
+      final response = await _dio.get('/workspaces/$workspaceId/invitations/');
+
+      if (response.data is List) {
+        return List<dynamic>.from(response.data);
+      }
+
+      return [];
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener invitaciones: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener invitaciones: $e');
+    }
+  }
+
+  static Future<void> cancelWorkspaceInvitation({
+    required int workspaceId,
+    required int invitationId,
+  }) async {
+    try {
+      await _dio.delete(
+        '/workspaces/$workspaceId/invitations/$invitationId/cancel/',
+      );
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al cancelar invitación: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al cancelar invitación: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateWorkspaceMemberRole({
+    required int workspaceId,
+    required int memberId,
+    required String role,
+  }) async {
+    try {
+      final response = await _dio.patch(
+        '/workspaces/$workspaceId/members/$memberId/',
+        data: {'role': role},
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al actualizar rol: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al actualizar rol: $e');
+    }
+  }
+
+  static Future<void> removeWorkspaceMember({
+    required int workspaceId,
+    required int memberId,
+  }) async {
+    try {
+      await _dio.delete('/workspaces/$workspaceId/members/$memberId/');
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al eliminar miembro: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al eliminar miembro: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> acceptWorkspaceInvitation(
+    int invitationId,
+  ) async {
+    try {
+      final response = await _dio.patch(
+        '/workspaces/invitations/$invitationId/accept/',
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al aceptar invitación: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al aceptar invitación: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> declineWorkspaceInvitation(
+    int invitationId,
+  ) async {
+    try {
+      final response = await _dio.patch(
+        '/workspaces/invitations/$invitationId/decline/',
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al rechazar invitación: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al rechazar invitación: $e');
+    }
+  }
+
+  static Future<List<dynamic>> getNotifications({
+    bool unreadOnly = false,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/notifications/',
+        queryParameters: unreadOnly ? {'unread': 'true'} : null,
+      );
+
+      if (response.data is Map<String, dynamic>) {
+        return List<dynamic>.from(response.data['results'] ?? []);
+      }
+
+      if (response.data is List) {
+        return List<dynamic>.from(response.data);
+      }
+
+      return [];
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener notificaciones: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener notificaciones: $e');
+    }
+  }
+
+  static Future<int> getUnreadNotificationsCount() async {
+    try {
+      final response = await _dio.get('/notifications/unread_count/');
+      return int.tryParse(response.data['unread_count']?.toString() ?? '0') ??
+          0;
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener conteo de notificaciones: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener conteo de notificaciones: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> markNotificationAsRead(
+    int notificationId,
+  ) async {
+    try {
+      final response = await _dio.patch(
+        '/notifications/$notificationId/read/',
+        data: {},
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al marcar notificación como leída: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al marcar notificación como leída: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> markAllNotificationsAsRead() async {
+    try {
+      final response = await _dio.post('/notifications/read_all/', data: {});
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al marcar todas como leídas: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al marcar todas como leídas: $e');
+    }
+  }
 }
