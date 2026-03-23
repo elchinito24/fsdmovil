@@ -18,6 +18,7 @@ import 'package:fsdmovil/screens/reviews_screen.dart';
 import 'package:fsdmovil/screens/history_screen.dart';
 import 'package:fsdmovil/screens/invitations_screen.dart';
 import 'package:fsdmovil/screens/settings_screen.dart';
+import 'package:fsdmovil/screens/meeting_mode_screen.dart';
 
 final routeObserver = RouteObserver<PageRoute<dynamic>>();
 
@@ -158,6 +159,11 @@ final appRouter = GoRouter(
       path: '/settings',
       pageBuilder: (context, state) =>
           _slideTransition(context, state, const SettingsScreen()),
+    ),
+    GoRoute(
+      path: '/meeting-mode',
+      pageBuilder: (context, state) =>
+          _slideTransition(context, state, const MeetingModeScreen()),
     ),
   ],
 );

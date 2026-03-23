@@ -52,6 +52,9 @@ dependencies:
   # Almacenamiento local (token JWT)
   shared_preferences: ^2.5.3
 
+  #Agregar la grabacion y permiso
+  record: ^6.0.0 
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -15,14 +15,41 @@ class DashboardScreen extends StatelessWidget {
       titlePink: 'principal',
       description:
           'Administra espacios de trabajo, proyectos y documentación colaborativa desde tu app móvil.',
-      action: Row(
+      action: Column(
         children: [
-          Expanded(
-            child: _PrimaryActionButton(
-              label: 'Nuevo espacio de trabajo',
-              icon: Icons.add_rounded,
-              onTap: () => context.push('/create-workspace'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: _PrimaryActionButton(
+                  label: 'Nuevo espacio de trabajo',
+                  icon: Icons.add_rounded,
+                  onTap: () => context.push('/create-workspace'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push('/meeting-mode'),
+                  icon: const Icon(Icons.mic_rounded),
+                  label: const Text(
+                    'Probar Modo Reunión',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: fsdPink),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -64,10 +91,10 @@ class DashboardScreen extends StatelessWidget {
                 onTap: () => context.go('/reviews'),
               ),
               _QuickAccessCard(
-                title: 'Diagramas',
-                subtitle: 'Vista reservada para diagramas',
-                icon: Icons.hub_outlined,
-                onTap: () => context.go('/diagrams'),
+                title: 'Modo Reunión',
+                subtitle: 'Graba y procesa reuniones',
+                icon: Icons.mic_rounded,
+                onTap: () => context.push('/meeting-mode'),
               ),
               _QuickAccessCard(
                 title: 'Historial',
@@ -133,6 +160,12 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return const Text('', style: TextStyle()).copyWithText(title);
+  }
+}
+
+extension on Widget {
+  Widget copyWithText(String title) {
     return Text(
       title,
       style: const TextStyle(

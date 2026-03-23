@@ -508,4 +508,63 @@ class ApiService {
       throw Exception('Error al marcar todas como leídas: $e');
     }
   }
+
+  static Future<Map<String, dynamic>> processMeetingAudio({
+    required int projectId,
+    required File audioFile,
+  }) async {
+    try {
+      final fileName = audioFile.path.split('/').last;
+
+      final formData = FormData.fromMap({
+        'project_id': projectId,
+        'audio': await MultipartFile.fromFile(
+          audioFile.path,
+          filename: fileName,
+        ),
+      });
+
+      final response = await _dio.post('/meetings/process/', data: formData);
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al procesar reunión: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al procesar reunión: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> saveMeetingResult({
+    required int projectId,
+    required String transcript,
+    required String summary,
+    required List<String> functionalRequirements,
+    required List<String> nonFunctionalRequirements,
+    required List<String> tasks,
+    String? audioFileName,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/meetings/save/',
+        data: {
+          'project_id': projectId,
+          'transcript': transcript,
+          'summary': summary,
+          'functional_requirements': functionalRequirements,
+          'non_functional_requirements': nonFunctionalRequirements,
+          'tasks': tasks,
+          'audio_file_name': audioFileName,
+        },
+      );
+
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al guardar resultado de reunión: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al guardar resultado de reunión: $e');
+    }
+  }
 }
