@@ -879,18 +879,10 @@ class _EditorScreenState extends State<EditorScreen> {
                           ),
                         ),
                         ElevatedButton.icon(
-                          onPressed: saving ? null : saveChanges,
-                          icon: saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.save_outlined),
-                          label: Text(saving ? 'Guardando...' : 'Guardar'),
+                          onPressed: () =>
+                              context.push('/preview/${widget.projectId}'),
+                          icon: const Icon(Icons.visibility_outlined),
+                          label: const Text('Vista previa'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _pink,
                             foregroundColor: Colors.white,

@@ -24,6 +24,23 @@ import 'package:fsdmovil/screens/team_meeting_room_screen.dart';
 
 final routeObserver = RouteObserver<PageRoute<dynamic>>();
 
+Page<void> _tabTransition(
+  BuildContext context,
+  GoRouterState state,
+  Widget child,
+) => CustomTransitionPage(
+  key: state.pageKey,
+  child: child,
+  transitionDuration: const Duration(milliseconds: 180),
+  reverseTransitionDuration: const Duration(milliseconds: 180),
+  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+      child: child,
+    );
+  },
+);
+
 Page<void> _slideTransition(
   BuildContext context,
   GoRouterState state,
@@ -78,7 +95,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/workspaces',
       pageBuilder: (context, state) =>
-          _slideTransition(context, state, const WorkspacesScreen()),
+          _tabTransition(context, state, const WorkspacesScreen()),
     ),
     GoRoute(
       path: '/workspace/:id',
@@ -94,7 +111,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/projects',
       pageBuilder: (context, state) =>
-          _slideTransition(context, state, const ProjectsScreen()),
+          _tabTransition(context, state, const ProjectsScreen()),
     ),
     GoRoute(
       path: '/create-project',
@@ -123,16 +140,16 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/documents',
       pageBuilder: (context, state) =>
-          _slideTransition(context, state, const DocumentsScreen()),
+          _tabTransition(context, state, const DocumentsScreen()),
     ),
     GoRoute(
       path: '/reviews',
       pageBuilder: (context, state) =>
-          _slideTransition(context, state, const ReviewsScreen()),
+          _tabTransition(context, state, const ReviewsScreen()),
     ),
     GoRoute(
       path: '/diagrams',
-      pageBuilder: (context, state) => _slideTransition(
+      pageBuilder: (context, state) => _tabTransition(
         context,
         state,
         const _SectionPlaceholderScreen(
@@ -150,7 +167,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/history',
       pageBuilder: (context, state) =>
-          _slideTransition(context, state, const HistoryScreen()),
+          _tabTransition(context, state, const HistoryScreen()),
     ),
     GoRoute(
       path: '/invitations',
