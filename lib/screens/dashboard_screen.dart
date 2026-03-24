@@ -102,6 +102,12 @@ class DashboardScreen extends StatelessWidget {
                 icon: Icons.history_rounded,
                 onTap: () => context.go('/history'),
               ),
+              _QuickAccessCard(
+                title: 'Reunión en equipo',
+                subtitle: 'Llamada colaborativa del proyecto',
+                icon: Icons.groups_rounded,
+                onTap: () => context.push('/team-meetings'),
+              ),
             ],
           ),
           const SizedBox(height: 24),

@@ -19,6 +19,8 @@ import 'package:fsdmovil/screens/history_screen.dart';
 import 'package:fsdmovil/screens/invitations_screen.dart';
 import 'package:fsdmovil/screens/settings_screen.dart';
 import 'package:fsdmovil/screens/meeting_mode_screen.dart';
+import 'package:fsdmovil/screens/team_meeting_lobby_screen.dart';
+import 'package:fsdmovil/screens/team_meeting_room_screen.dart';
 
 final routeObserver = RouteObserver<PageRoute<dynamic>>();
 
@@ -164,6 +166,22 @@ final appRouter = GoRouter(
       path: '/meeting-mode',
       pageBuilder: (context, state) =>
           _slideTransition(context, state, const MeetingModeScreen()),
+    ),
+    GoRoute(
+      path: '/team-meetings',
+      pageBuilder: (context, state) =>
+          _slideTransition(context, state, const TeamMeetingLobbyScreen()),
+    ),
+    GoRoute(
+      path: '/team-meeting-room/:sessionId',
+      pageBuilder: (context, state) {
+        final sessionId = int.parse(state.pathParameters['sessionId']!);
+        return _slideTransition(
+          context,
+          state,
+          TeamMeetingRoomScreen(sessionId: sessionId),
+        );
+      },
     ),
   ],
 );

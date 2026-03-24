@@ -55,6 +55,9 @@ dependencies:
   #Agregar la grabacion y permiso
   record: ^6.0.0 
 
+#reunion en equipo
+  livekit_client: ^2.5.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -567,4 +567,140 @@ class ApiService {
       throw Exception('Error al guardar resultado de reunión: $e');
     }
   }
+
+  static Future<Map<String, dynamic>> createTeamMeeting({
+    required int workspaceId,
+    required int projectId,
+    String title = '',
+    bool recordingEnabled = true,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/team-meetings/',
+        data: {
+          'workspace_id': workspaceId,
+          'project_id': projectId,
+          'title': title,
+          'recording_enabled': recordingEnabled,
+        },
+      );
+
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al crear reunión de equipo: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al crear reunión de equipo: $e');
+    }
+  }
+
+  static Future<List<dynamic>> getActiveTeamMeetings({
+    int? workspaceId,
+    int? projectId,
+  }) async {
+    try {
+      final query = <String, dynamic>{};
+
+      if (workspaceId != null) query['workspace_id'] = workspaceId;
+      if (projectId != null) query['project_id'] = projectId;
+
+      final response = await _dio.get(
+        '/team-meetings/active/',
+        queryParameters: query.isEmpty ? null : query,
+      );
+
+      return List<dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener reuniones activas: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener reuniones activas: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getTeamMeetingDetail(
+    int sessionId,
+  ) async {
+    try {
+      final response = await _dio.get('/team-meetings/$sessionId/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener detalle de reunión: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener detalle de reunión: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getTeamMeetingJoinToken(
+    int sessionId,
+  ) async {
+    try {
+      final response = await _dio.post('/team-meetings/$sessionId/join-token/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener token de reunión: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener token de reunión: $e');
+    }
+  }
+
+  static Future<void> connectTeamMeetingParticipant(int sessionId) async {
+    try {
+      await _dio.post('/team-meetings/$sessionId/connect/');
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al marcar participante conectado: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al marcar participante conectado: $e');
+    }
+  }
+
+  static Future<void> disconnectTeamMeetingParticipant(int sessionId) async {
+    try {
+      await _dio.post('/team-meetings/$sessionId/disconnect/');
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al marcar participante desconectado: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al marcar participante desconectado: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> endTeamMeeting(int sessionId) async {
+    try {
+      final response = await _dio.post('/team-meetings/$sessionId/end/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al finalizar reunión: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al finalizar reunión: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getTeamMeetingDocumentPreview(
+    int sessionId,
+  ) async {
+    try {
+      final response = await _dio.get(
+        '/team-meetings/$sessionId/document-preview/',
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener vista previa del documento: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener vista previa del documento: $e');
+    }
+  }
 }
