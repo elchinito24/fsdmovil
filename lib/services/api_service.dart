@@ -676,11 +676,18 @@ class ApiService {
 
   static Future<Map<String, dynamic>> endTeamMeeting(int sessionId) async {
     try {
-      final response = await _dio.post('/team-meetings/$sessionId/end/');
+      final response = await _dio.post(
+        '/team-meetings/$sessionId/end/',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 30),
+        ),
+      );
+
       return Map<String, dynamic>.from(response.data);
     } on DioException catch (e) {
       throw Exception(
-        'Error al finalizar reunión: ${e.response?.data ?? e.message}',
+        'Error al finalizar reunión: ${_extractErrorMessage(e.response?.data ?? e.message)}',
       );
     } catch (e) {
       throw Exception('Error al finalizar reunión: $e');
@@ -701,6 +708,72 @@ class ApiService {
       );
     } catch (e) {
       throw Exception('Error al obtener vista previa del documento: $e');
+    }
+  }
+
+  static String _extractErrorMessage(dynamic errorData) {
+    if (errorData == null) {
+      return 'No se recibió detalle del error.';
+    }
+
+    if (errorData is Map<String, dynamic>) {
+      if (errorData['detail'] != null) {
+        return errorData['detail'].toString();
+      }
+      return errorData.toString();
+    }
+
+    return errorData.toString();
+  }
+
+  static Future<Map<String, dynamic>> processTeamMeetingAi(
+    int sessionId,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/team-meetings/$sessionId/process-ai/',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 180),
+          sendTimeout: const Duration(seconds: 180),
+        ),
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al procesar reunión con IA: ${_extractErrorMessage(e.response?.data ?? e.message)}',
+      );
+    } catch (e) {
+      throw Exception('Error al procesar reunión con IA: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> applyTeamMeetingAiToSrs({
+    required int sessionId,
+    required String summary,
+    required String transcript,
+    required List<String> functionalRequirements,
+    required List<String> nonFunctionalRequirements,
+    required List<String> tasks,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/team-meetings/$sessionId/apply-ai/',
+        data: {
+          'summary': summary,
+          'transcript': transcript,
+          'functional_requirements': functionalRequirements,
+          'non_functional_requirements': nonFunctionalRequirements,
+          'tasks': tasks,
+        },
+      );
+
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al aplicar resultados al SRS: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al aplicar resultados al SRS: $e');
     }
   }
 }
