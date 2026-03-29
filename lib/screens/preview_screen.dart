@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
-import 'package:vector_math/vector_math_64.dart' as vmath;
 import 'package:fsdmovil/services/api_service.dart';
 import 'package:fsdmovil/services/srs_word_service.dart';
 
@@ -8,11 +7,10 @@ const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF0F1017);
 const _textGrey = Color(0xFF8E8E93);
 
-// Word document colors
 const _docBg = Color(0xFFFFFFFF);
 const _docText = Color(0xFF1A1A1A);
 const _docTextLight = Color(0xFF444444);
-const _docHeading1 = Color(0xFF1F3864); // Word navy blue
+const _docHeading1 = Color(0xFF1F3864);
 const _docHeading2 = Color(0xFF2E5197);
 const _docAccent = Color(0xFF2E5197);
 const _docBorder = Color(0xFFD0D7DE);
@@ -20,7 +18,6 @@ const _docTableHeader = Color(0xFFD6E4F0);
 
 class PreviewScreen extends StatefulWidget {
   final int projectId;
-
   const PreviewScreen({super.key, required this.projectId});
 
   @override
@@ -33,125 +30,169 @@ class _PreviewScreenState extends State<PreviewScreen> {
   String? errorMessage;
   Map<String, dynamic>? responseData;
 
-  final TransformationController _transformController =
-      TransformationController();
-  bool _transformSet = false;
+  final TransformationController _transformController = TransformationController();
+  bool _transformApplied = false;
   double _fitScale = 0.01;
+
   final GlobalKey _viewerKey = GlobalKey();
   final GlobalKey _childKey = GlobalKey();
+
+  // Margen visible alrededor de la hoja en pixeles de pantalla
+  static const double _kMargin = 4.0;
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Lifecycle
+  // ───────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    // Clampear en CADA cambio de la matriz, incluyendo los frames
+    // de la animacion interna de inercia despues de soltar el dedo.
+    _transformController.addListener(_clampTransform);
     loadPreview();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _recalcFitScale();
+  }
+
+  void _recalcFitScale() {
     const docWidth = 794.0;
     const docHeight = 1123.0;
-    final screenSize = MediaQuery.of(context).size;
-    // final scaleX = screenSize.width / docWidth;
-    // final scaleY = screenSize.height / docHeight;
-    // Use the larger scale so the page always fills at least one axis and
-    // cannot be zoomed out smaller than the device (prevents the sheet
-    // from becoming visually tiny).
-    // Fit scale ensures the whole page fits into the viewport. No margin.
-    // Add a fixed 4px margin around the page at min zoom
-    final marginPx = 4.0;
-    final fitScale = min(
-      (screenSize.width - marginPx * 2) / docWidth,
-      (screenSize.height - marginPx * 2) / docHeight,
+    final screen = MediaQuery.of(context).size;
+    final newScale = min(
+      (screen.width - _kMargin * 2) / docWidth,
+      (screen.height - _kMargin * 2) / docHeight,
     );
-    final newFitScale = fitScale;
-    if ((newFitScale - _fitScale).abs() > 0.001) {
-      _fitScale = newFitScale;
-      if (!_transformSet) {
-        _transformSet = true;
+    if ((newScale - _fitScale).abs() > 0.001) {
+      _fitScale = newScale;
+      if (!_transformApplied) {
+        _transformApplied = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            // Always apply a fixed 4px margin on all sides
-            final scale = _fitScale;
-            final marginPx = 4.0;
-            final offsetX = marginPx / scale;
-            final offsetY = marginPx / scale;
-            _transformController.value = Matrix4.identity()
-              ..translate(offsetX, offsetY)
-              ..scale(scale, scale, 1);
-            // Clamp after initial transform to ensure boundaries
-            _clampTransform();
-          }
+          if (mounted) _applyInitialTransform();
         });
       }
     }
   }
 
-  void _clampTransform({double marginPx = 4.0}) {
-    try {
-      if (_viewerKey.currentContext == null || _childKey.currentContext == null) return;
-      final RenderBox viewerBox = _viewerKey.currentContext!.findRenderObject() as RenderBox;
-      final viewerSize = viewerBox.size;
-      final RenderBox childBox = _childKey.currentContext!.findRenderObject() as RenderBox;
-      final childSize = childBox.size;
-
-      final matrix = _transformController.value.clone();
-      final scale = matrix.getMaxScaleOnAxis();
-
-      // Transform the four corners of the child to viewport coordinates
-      final corners = [
-        vmath.Vector3(0, 0, 0),
-        vmath.Vector3(childSize.width, 0, 0),
-        vmath.Vector3(0, childSize.height, 0),
-        vmath.Vector3(childSize.width, childSize.height, 0),
-      ].map((v) {
-        final tv = matrix.transform3(v);
-        return Offset(tv.x, tv.y);
-      }).toList();
-
-      final minX = corners.map((c) => c.dx).reduce(min);
-      final maxX = corners.map((c) => c.dx).reduce(max);
-      final minY = corners.map((c) => c.dy).reduce(min);
-      final maxY = corners.map((c) => c.dy).reduce(max);
-
-      double dx = 0.0;
-      double dy = 0.0;
-
-      // Horizontal
-      if ((maxX - minX) <= (viewerSize.width - marginPx * 2)) {
-        final targetCenter = viewerSize.width / 2;
-        final childCenter = (minX + maxX) / 2;
-        dx = targetCenter - childCenter;
-      } else {
-        if (minX > marginPx) dx = marginPx - minX;
-        if (maxX < viewerSize.width - marginPx) dx = (viewerSize.width - marginPx) - maxX;
-      }
-
-      // Vertical
-      if ((maxY - minY) <= (viewerSize.height - marginPx * 2)) {
-        final targetCenter = viewerSize.height / 2;
-        final childCenter = (minY + maxY) / 2;
-        dy = targetCenter - childCenter;
-      } else {
-        if (minY > marginPx) dy = marginPx - minY;
-        if (maxY < viewerSize.height - marginPx) dy = (viewerSize.height - marginPx) - maxY;
-      }
-
-      if (dx.abs() > 0.5 || dy.abs() > 0.5) {
-        // Translate needs to be in child coordinate space (divide by scale)
-        matrix.translate(dx / scale, dy / scale);
-        _transformController.value = matrix;
-      }
-    } catch (_) {
-      // ignore errors if layout not ready
-    }
-  }
-
   @override
   void dispose() {
+    _transformController.removeListener(_clampTransform);
     _transformController.dispose();
     super.dispose();
   }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Transform helpers
+  // ───────────────────────────────────────────────────────────────────────
+
+  // Centra la hoja al fit-scale inicial.
+  void _applyInitialTransform([int attempt = 0]) {
+    if (!mounted) return;
+    try {
+      final vCtx = _viewerKey.currentContext;
+      final cCtx = _childKey.currentContext;
+      if (vCtx != null && cCtx != null) {
+        final vSize = (vCtx.findRenderObject() as RenderBox).size;
+        final cSize = (cCtx.findRenderObject() as RenderBox).size;
+        final s = 1.0; // Sin zoom, escala real
+        // Centrar horizontalmente, pegar arriba
+        final tx = (vSize.width - cSize.width * s) / 2.0;
+        final ty = _kMargin;
+        _transformController.value = Matrix4.identity()
+          ..translate(tx, ty)
+          ..scale(s, s, 1.0);
+        return;
+      }
+    } catch (_) {}
+
+    if (attempt < 5) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _applyInitialTransform(attempt + 1);
+      });
+    }
+  }
+
+  // Limita el pan en tiempo real.
+  //
+  // La matriz de InteractiveViewer (constrained:false, sin rotacion) tiene
+  // la forma column-major:
+  //
+  //   col0  col1  col2  col3
+  //   [ s    0     0    tx  ]  row0
+  //   [ 0    s     0    ty  ]  row1
+  //   [ 0    0     1    0   ]  row2
+  //   [ 0    0     0    1   ]  row3
+  //
+  // En storage (column-major):
+  //   index = col*4 + row
+  //   storage[0]  = s   (col0,row0)
+  //   storage[5]  = s   (col1,row1)
+  //   storage[12] = tx  (col3,row0)  <- px de PANTALLA
+  //   storage[13] = ty  (col3,row1)  <- px de PANTALLA
+  //
+  // Esto es cierto cuando la matriz se construye como:
+  //   Matrix4.identity()..translate(tx,ty)..scale(s,s,1)
+  // que es exactamente lo que hace InteractiveViewer internamente.
+  void _clampTransform() {
+    try {
+      final vCtx = _viewerKey.currentContext;
+      final cCtx = _childKey.currentContext;
+      if (vCtx == null || cCtx == null) return;
+
+      final vSize = (vCtx.findRenderObject() as RenderBox).size;
+      final cSize = (cCtx.findRenderObject() as RenderBox).size;
+
+      final m     = _transformController.value;
+      final scale = m.getMaxScaleOnAxis();
+
+      // Posicion actual de la esquina (0,0) del hijo en pantalla
+      double sx = m.storage[12]; // borde izquierdo de la hoja en px pantalla
+      double sy = m.storage[13]; // borde superior  de la hoja en px pantalla
+
+      final scaledW = cSize.width  * scale;
+      final scaledH = cSize.height * scale;
+
+      // ── Horizontal ────────────────────────────────────────────────────
+      if (scaledW <= vSize.width) {
+        // La hoja es mas angosta que la pantalla: centrar siempre
+        sx = (vSize.width - scaledW) / 2.0;
+      } else {
+        // La hoja es mas ancha:
+        //   borde izq (sx) no puede ser mayor que _kMargin
+        //     → si sx > _kMargin hay espacio vacio a la izquierda → mover izq
+        //   borde der (sx + scaledW) no puede ser menor que vSize.width - _kMargin
+        //     → si sx < vSize.width - scaledW - _kMargin hay espacio vacio a la derecha
+        //
+        //   minSx = vSize.width - scaledW - _kMargin  (negativo normalmente)
+        //   maxSx = _kMargin
+        sx = sx.clamp(vSize.width - scaledW - _kMargin, _kMargin);
+      }
+
+      // ── Vertical ──────────────────────────────────────────────────────
+      if (scaledH <= vSize.height) {
+        sy = (vSize.height - scaledH) / 2.0;
+      } else {
+        sy = sy.clamp(vSize.height - scaledH - _kMargin, _kMargin);
+      }
+
+      // Solo actualizar si cambio algo (evitar rebuilds innecesarios)
+      if ((sx - m.storage[12]).abs() > 0.1 ||
+          (sy - m.storage[13]).abs() > 0.1) {
+        final fixed = m.clone();
+        fixed.storage[12] = sx;
+        fixed.storage[13] = sy;
+        _transformController.value = fixed;
+      }
+    } catch (_) {}
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Data
+  // ───────────────────────────────────────────────────────────────────────
 
   Future<void> loadPreview() async {
     try {
@@ -169,113 +210,90 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
-  String safeText(dynamic value, {String fallback = 'Sin información'}) {
+  String safeText(dynamic value, {String fallback = 'Sin informacion'}) {
     if (value == null) return fallback;
     final text = value.toString().trim();
     return text.isEmpty ? fallback : text;
   }
 
-  // ---------- Word-style document widgets ----------
+  // ───────────────────────────────────────────────────────────────────────
+  // Document widgets
+  // ───────────────────────────────────────────────────────────────────────
 
   Widget _docH1(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: _docHeading1,
-            letterSpacing: 0.2,
-          ),
-        ),
+        child: Text(text,
+            style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: _docHeading1,
+                letterSpacing: 0.2)),
       );
 
   Widget _docH2(String text) => Padding(
         padding: const EdgeInsets.only(top: 16, bottom: 4),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: _docHeading2,
-          ),
-        ),
+        child: Text(text,
+            style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: _docHeading2)),
       );
 
   Widget _docP(String text) => Padding(
         padding: const EdgeInsets.only(top: 4),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 13,
-            height: 1.7,
-            color: _docTextLight,
-          ),
-        ),
+        child: Text(text,
+            style: const TextStyle(
+                fontSize: 13, height: 1.7, color: _docTextLight)),
       );
 
-  Widget _docBulletList(List items, {String emptyText = 'Sin información'}) {
+  Widget _docBulletList(List items, {String emptyText = 'Sin informacion'}) {
     if (items.isEmpty) return _docP(emptyText);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: items
-          .map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(top: 4, left: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 6, right: 8),
-                    child: CircleAvatar(
-                      radius: 3,
-                      backgroundColor: _docAccent,
+          .map((item) => Padding(
+                padding: const EdgeInsets.only(top: 4, left: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6, right: 8),
+                      child: CircleAvatar(
+                          radius: 3, backgroundColor: _docAccent),
                     ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      safeText(item),
-                      style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.7,
-                        color: _docTextLight,
-                      ),
+                    Expanded(
+                      child: Text(safeText(item),
+                          style: const TextStyle(
+                              fontSize: 13,
+                              height: 1.7,
+                              color: _docTextLight)),
                     ),
-                  ),
-                ],
-              ),
-            ),
-          )
+                  ],
+                ),
+              ))
           .toList(),
     );
   }
 
   Widget _docDefinitionsList(List items) {
-    if (items.isEmpty) return _docP('Sin información');
+    if (items.isEmpty) return _docP('Sin informacion');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: items.map((item) {
         final data = Map<String, dynamic>.from(item);
-        final term = safeText(data['term'], fallback: '');
-        final def = safeText(data['definition'], fallback: '');
         return Padding(
           padding: const EdgeInsets.only(top: 6, left: 8),
           child: RichText(
             text: TextSpan(
               style: const TextStyle(
-                fontSize: 13,
-                height: 1.7,
-                color: _docTextLight,
-              ),
+                  fontSize: 13, height: 1.7, color: _docTextLight),
               children: [
                 TextSpan(
-                  text: '$term: ',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: _docText,
-                  ),
-                ),
-                TextSpan(text: def),
+                    text: '${safeText(data['term'], fallback: '')}: ',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, color: _docText)),
+                TextSpan(
+                    text: safeText(data['definition'], fallback: '')),
               ],
             ),
           ),
@@ -301,21 +319,16 @@ class _PreviewScreenState extends State<PreviewScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                safeText(data['name'], fallback: 'Usuario'),
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: _docText,
-                ),
-              ),
+              Text(safeText(data['name'], fallback: 'Usuario'),
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: _docText)),
               if (safeText(data['id'], fallback: '').isNotEmpty)
                 _docFieldRow('ID', safeText(data['id'])),
-              _docFieldRow('Descripción', safeText(data['description'])),
+              _docFieldRow('Descripcion', safeText(data['description'])),
               _docFieldRow(
-                'Características',
-                safeText(data['characteristics']),
-              ),
+                  'Caracteristicas', safeText(data['characteristics'])),
             ],
           ),
         );
@@ -327,15 +340,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
         padding: const EdgeInsets.only(top: 3),
         child: RichText(
           text: TextSpan(
-            style: const TextStyle(fontSize: 12, height: 1.5, color: _docTextLight),
+            style: const TextStyle(
+                fontSize: 12, height: 1.5, color: _docTextLight),
             children: [
               TextSpan(
-                text: '$label: ',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: _docText,
-                ),
-              ),
+                  text: '$label: ',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, color: _docText)),
               TextSpan(text: value),
             ],
           ),
@@ -356,40 +367,40 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }) {
     final rows = [
       ['Proyecto', projectName],
-      ['Versión', version],
+      ['Version', version],
       ['Fecha', date],
       ['Autor(es)', author],
-      ['Organización', organization],
+      ['Organizacion', organization],
     ];
     return Table(
       border: TableBorder.all(color: _docBorder, width: 0.8),
       columnWidths: const {
         0: IntrinsicColumnWidth(),
-        1: FlexColumnWidth(),
+        1: FlexColumnWidth()
       },
       children: rows.map((row) {
         return TableRow(
           decoration: BoxDecoration(
-            color: row == rows.first ? _docTableHeader : Color(0xFFFFFFFF),
+            color: row == rows.first
+                ? _docTableHeader
+                : const Color(0xFFFFFFFF),
           ),
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              child: Text(
-                row[0],
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: _docText,
-                ),
-              ),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 7),
+              child: Text(row[0],
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: _docText)),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              child: Text(
-                row[1],
-                style: const TextStyle(fontSize: 12, color: _docTextLight),
-              ),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 7),
+              child: Text(row[1],
+                  style: const TextStyle(
+                      fontSize: 12, color: _docTextLight)),
             ),
           ],
         );
@@ -397,56 +408,55 @@ class _PreviewScreenState extends State<PreviewScreen> {
     );
   }
 
+  // ───────────────────────────────────────────────────────────────────────
+  // Document pages
+  // ───────────────────────────────────────────────────────────────────────
+
   Widget _buildDocumentPage() {
-    final srs = Map<String, dynamic>.from(responseData?['srs_data'] ?? {});
+    final srs =
+        Map<String, dynamic>.from(responseData?['srs_data'] ?? {});
     final metadata = Map<String, dynamic>.from(srs['metadata'] ?? {});
-    final introduction = Map<String, dynamic>.from(srs['introduction'] ?? {});
-    final overallDescription = Map<String, dynamic>.from(
-      srs['overallDescription'] ?? {},
-    );
-    final specificRequirements = Map<String, dynamic>.from(
-      srs['specificRequirements'] ?? {},
-    );
+    final introduction =
+        Map<String, dynamic>.from(srs['introduction'] ?? {});
+    final overallDescription =
+        Map<String, dynamic>.from(srs['overallDescription'] ?? {});
+    final specificRequirements =
+        Map<String, dynamic>.from(srs['specificRequirements'] ?? {});
 
     final projectName = safeText(metadata['projectName']);
-    final version = safeText(responseData?['version'], fallback: '1.0');
+    final version =
+        safeText(responseData?['version'], fallback: '1.0');
     final date = safeText(metadata['createdAt']);
     final author = safeText(metadata['owner']);
     final organization = safeText(metadata['organization']);
 
     final pages = <(String, List<Widget>)>[
+      // Portada
       (
         '1',
         [
-          // ── PORTADA ──────────────────────────────────
           Center(
-            child: Column(
-              children: [
-                Container(width: 56, height: 6, color: _docHeading1),
-                const SizedBox(height: 20),
-                const Text(
-                  'ESPECIFICACIÓN DE\nREQUISITOS DE SOFTWARE',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
+            child: Column(children: [
+              Container(width: 56, height: 6, color: _docHeading1),
+              const SizedBox(height: 20),
+              const Text(
+                'ESPECIFICACION DE\nREQUISITOS DE SOFTWARE',
+                textAlign: TextAlign.center,
+                style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
                     color: _docHeading1,
                     letterSpacing: 1,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'IEEE Std 830',
+                    height: 1.4),
+              ),
+              const SizedBox(height: 4),
+              const Text('IEEE Std 830',
                   style: TextStyle(
-                    fontSize: 12,
-                    color: _docAccent,
-                    letterSpacing: 2,
-                  ),
-                ),
-                const SizedBox(height: 28),
-              ],
-            ),
+                      fontSize: 12,
+                      color: _docAccent,
+                      letterSpacing: 2)),
+              const SizedBox(height: 28),
+            ]),
           ),
           _docInfoTable(
             projectName: projectName,
@@ -457,37 +467,38 @@ class _PreviewScreenState extends State<PreviewScreen> {
           ),
         ],
       ),
+      // Introduccion
       (
         '2',
         [
-          // ── 1. INTRODUCCIÓN ──────────────────────────
-          _docH1('1. Introducción'),
-          _docH2('1.1 Propósito'),
+          _docH1('1. Introduccion'),
+          _docH2('1.1 Proposito'),
           _docP(safeText(introduction['purpose'])),
           _docH2('1.2 Alcance'),
           _docP(safeText(introduction['scope'])),
-          _docH2('1.3 Definiciones, Acrónimos y Abreviaturas'),
-          _docDefinitionsList(List.from(introduction['definitions'] ?? [])),
+          _docH2('1.3 Definiciones, Acronimos y Abreviaturas'),
+          _docDefinitionsList(
+              List.from(introduction['definitions'] ?? [])),
           _docH2('1.4 Referencias'),
           _docBulletList(
-            List.from(introduction['references'] ?? []),
-            emptyText: 'Sin referencias registradas',
-          ),
-          _docH2('1.5 Visión General'),
+              List.from(introduction['references'] ?? []),
+              emptyText: 'Sin referencias registradas'),
+          _docH2('1.5 Vision General'),
           _docP(safeText(introduction['overview'])),
         ],
       ),
+      // Descripcion general
       (
         '3',
         [
-          // ── 2. DESCRIPCIÓN GENERAL ───────────────────
-          _docH1('2. Descripción General'),
+          _docH1('2. Descripcion General'),
           _docH2('2.1 Perspectiva del Producto'),
           _docP(safeText(overallDescription['productPerspective'])),
           _docH2('2.2 Funciones del Producto'),
           _docP(safeText(overallDescription['productFunctions'])),
           _docH2('2.3 Clases de Usuario'),
-          _docUserClasses(List.from(overallDescription['userClasses'] ?? [])),
+          _docUserClasses(
+              List.from(overallDescription['userClasses'] ?? [])),
           _docH2('2.4 Entorno Operativo'),
           _docP(safeText(overallDescription['operatingEnvironment'])),
           _docH2('2.5 Restricciones'),
@@ -496,41 +507,39 @@ class _PreviewScreenState extends State<PreviewScreen> {
           _docP(safeText(overallDescription['assumptions'])),
         ],
       ),
+      // Requisitos especificos
       (
         '4',
         [
-          // ── 3. REQUISITOS ESPECÍFICOS ────────────────
-          _docH1('3. Requisitos Específicos'),
+          _docH1('3. Requisitos Especificos'),
           _docH2('3.1 Interfaces Externas'),
           _docP(safeText(specificRequirements['externalInterfaces'])),
           _docH2('3.2 Requisitos Funcionales'),
           _docBulletList(
-            List.from(specificRequirements['functionalRequirements'] ?? []),
-            emptyText: 'Sin requisitos funcionales registrados',
-          ),
+              List.from(
+                  specificRequirements['functionalRequirements'] ?? []),
+              emptyText: 'Sin requisitos funcionales registrados'),
           _docH2('3.3 Requisitos No Funcionales'),
           _docBulletList(
-            List.from(
-                specificRequirements['nonFunctionalRequirements'] ?? []),
-            emptyText: 'Sin requisitos no funcionales registrados',
-          ),
+              List.from(specificRequirements[
+                      'nonFunctionalRequirements'] ??
+                  []),
+              emptyText: 'Sin requisitos no funcionales registrados'),
           _docH2('3.4 Reglas de Negocio'),
           _docBulletList(
-            List.from(specificRequirements['businessRules'] ?? []),
-            emptyText: 'Sin reglas de negocio registradas',
-          ),
+              List.from(specificRequirements['businessRules'] ?? []),
+              emptyText: 'Sin reglas de negocio registradas'),
           _docH2('3.5 Casos de Uso'),
           _docBulletList(
-            List.from(specificRequirements['useCases'] ?? []),
-            emptyText: 'Sin casos de uso registrados',
-          ),
+              List.from(specificRequirements['useCases'] ?? []),
+              emptyText: 'Sin casos de uso registrados'),
           const SizedBox(height: 16),
           _docDivider(),
           Center(
             child: Text(
-              'Documento generado por FSD  •  v$version',
-              style: const TextStyle(fontSize: 11, color: _textGrey),
-            ),
+                'Documento generado por FSD  •  v$version',
+                style:
+                    const TextStyle(fontSize: 11, color: _textGrey)),
           ),
         ],
       ),
@@ -540,20 +549,17 @@ class _PreviewScreenState extends State<PreviewScreen> {
       children: pages.map((entry) {
         final pageNum = entry.$1;
         final content = entry.$2;
+        final isLast = pageNum == '4';
         return Column(
           children: [
-            // número de página encima
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                'Página $pageNum',
-                style: TextStyle(
-                  color: Color(0xFFFFFFFF).withOpacity(0.40),
-                  fontSize: 11,
-                ),
-              ),
+              child: Text('Pagina $pageNum',
+                  style: TextStyle(
+                      color:
+                          const Color(0xFFFFFFFF).withOpacity(0.40),
+                      fontSize: 11)),
             ),
-            // hoja blanca A4 (794 × 1123 @ 96dpi)
             SizedBox(
               width: 794,
               height: 1123,
@@ -562,7 +568,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   color: _docBg,
                   boxShadow: [
                     BoxShadow(
-                      color: Color(0xFF000000).withOpacity(0.40),
+                      color:
+                          const Color(0xFF000000).withOpacity(0.40),
                       blurRadius: 18,
                       spreadRadius: 1,
                       offset: const Offset(0, 4),
@@ -572,148 +579,145 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Container(height: 5, color: const Color(0xFF2B579A)),
+                    Container(
+                        height: 5,
+                        color: const Color(0xFF2B579A)),
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(96, 48, 96, 0),
+                        padding:
+                            const EdgeInsets.fromLTRB(96, 48, 96, 0),
                         child: ClipRect(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             children: content,
                           ),
                         ),
                       ),
                     ),
-                    // pie de página con número
                     Container(
                       height: 32,
                       decoration: const BoxDecoration(
                         border: Border(
-                          top: BorderSide(color: _docBorder, width: 0.8),
-                        ),
+                            top: BorderSide(
+                                color: _docBorder, width: 0.8)),
                       ),
                       alignment: Alignment.center,
-                      child: Text(
-                        '$pageNum',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: _docTextLight,
-                        ),
-                      ),
-                  ),
-                ],
+                      child: Text(pageNum,
+                          style: const TextStyle(
+                              fontSize: 11, color: _docTextLight)),
+                    ),
+                  ],
+                ),
               ),
             ),
-            ),
-            // espacio entre hojas (simula el fondogris entre páginas)
-            if (pageNum != '4') const SizedBox(height: 24),
+            if (!isLast) const SizedBox(height: 24),
           ],
         );
       }).toList(),
     );
   }
 
+  // ───────────────────────────────────────────────────────────────────────
+  // Word viewer
+  // ───────────────────────────────────────────────────────────────────────
+
   Widget _buildWordViewer() {
-    final srs = Map<String, dynamic>.from(responseData?['srs_data'] ?? {});
-    final metadata = Map<String, dynamic>.from(srs['metadata'] ?? {});
-    final projectName = safeText(metadata['projectName'], fallback: 'Documento');
-    final version = safeText(responseData?['version'], fallback: '1.0');
+    final srs =
+        Map<String, dynamic>.from(responseData?['srs_data'] ?? {});
+    final metadata =
+        Map<String, dynamic>.from(srs['metadata'] ?? {});
+    final projectName =
+        safeText(metadata['projectName'], fallback: 'Documento');
+    final version =
+        safeText(responseData?['version'], fallback: '1.0');
     final safeName = projectName.replaceAll(' ', '_');
 
     return Column(
       children: [
-        // ── Word-style document title bar ─────────────────────────────────
+        // Barra de titulo estilo Word
         Container(
           color: const Color(0xFF1E1E1E),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           child: Row(
             children: [
-              const Icon(
-                Icons.description_outlined,
-                color: Color(0xFF2B579A),
-                size: 17,
-              ),
+              const Icon(Icons.description_outlined,
+                  color: Color(0xFF2B579A), size: 17),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  'SRS_$safeName.docx',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFFCCCCCC),
-                    fontSize: 12.5,
-                  ),
-                ),
+                child: Text('SRS_$safeName.docx',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Color(0xFFCCCCCC), fontSize: 12.5)),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2B579A).withOpacity(0.2),
+                  color:
+                      const Color(0xFF2B579A).withOpacity(0.2),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: const Color(0xFF2B579A).withOpacity(0.4)),
+                  border: Border.all(
+                      color: const Color(0xFF2B579A)
+                          .withOpacity(0.4)),
                 ),
-                child: Text(
-                  'v$version',
-                  style: const TextStyle(
-                    color: Color(0xFF7AB0E8),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: Text('v$version',
+                    style: const TextStyle(
+                        color: Color(0xFF7AB0E8),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
               ),
             ],
           ),
         ),
-        // ── Gray Word desktop ─────────────────────────────────────────────
+
+        // Escritorio gris estilo Word
         Expanded(
           child: Container(
             key: _viewerKey,
             color: const Color(0xFF525659),
-            child: InteractiveViewer(
-                      transformationController: _transformController,
-                      // do not allow panning outside the page
-                      boundaryMargin: EdgeInsets.zero,
-                      minScale: _fitScale,
-                      maxScale: 3.0,
-                      constrained: false,
-                      panAxis: PanAxis.free,
-                      onInteractionEnd: (details) {
-                        // Ensure the final scale is not smaller than the computed _fitScale
-                        // (which fits the page to one axis). If it is, snap to _fitScale
-                        // and center the page in the available area.
-                        // screenSize no longer needed
-                        final currentScale = _transformController.value.getMaxScaleOnAxis();
-                        final minAllowed = _fitScale;
-                        if (currentScale < minAllowed) {
-                          // Snap to minAllowed and always apply a fixed 4px margin
-                          final newScale = minAllowed;
-                          final marginPx = 4.0;
-                          final offsetX = marginPx / newScale;
-                          final offsetY = marginPx / newScale;
-                          final matrix = Matrix4.identity()
-                            ..translate(offsetX, offsetY)
-                            ..scale(newScale, newScale, 1);
-                          _transformController.value = matrix;
-                          // After snapping scale, ensure translation stays within bounds
-                          _clampTransform();
-                        }
-                      },
-                      child: SizedBox(
-                    key: _childKey,
-                    width: 794.0,
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 24),
-                        _buildDocumentPage(),
-                        const SizedBox(height: 40),
-                      ],
-                    ),
+            child: Listener(
+              // Interrumpir inercia al tocar la pantalla
+              onPointerDown: (_) {
+                final snap = _transformController.value.clone();
+                _transformController.value = snap;
+              },
+              child: InteractiveViewer(
+                transformationController: _transformController,
+                // Sin limite automatico de Flutter: lo manejamos nosotros
+                boundaryMargin: const EdgeInsets.all(double.infinity),
+                // No puede hacer zoom-out mas pequeno que el fit
+                minScale: _fitScale,
+                maxScale: 3.0,
+                constrained: false,
+                panAxis: PanAxis.free,
+                // Friction muy alto = fling casi nulo al soltar el dedo
+                interactionEndFrictionCoefficient: 0.01,
+                // El clamp se aplica via _transformController.addListener
+                // en cada frame, incluyendo la animacion de inercia post-fling.
+                child: SizedBox(
+                  key: _childKey,
+                  width: 794.0,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 24),
+                      _buildDocumentPage(),
+                      const SizedBox(height: 40),
+                    ],
                   ),
                 ),
+              ),
+            ),
           ),
         ),
       ],
     );
   }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Build
+  // ───────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -723,10 +727,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
         backgroundColor: _darkBg,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text(
-          'Vista Previa',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
+        title: const Text('Vista Previa',
+            style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 14),
@@ -736,23 +738,25 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   label: 'PDF',
                   icon: Icons.picture_as_pdf_outlined,
                   color: _pink,
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                  onTap: () =>
+                      ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('La descarga de PDF estará disponible pronto'),
+                      content: Text(
+                          'La descarga de PDF estara disponible pronto'),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-_generatingWord
+                _generatingWord
                     ? const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 12),
                         child: SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Color(0xFFFFFFFF),
-                          ),
+                              strokeWidth: 2,
+                              color: Color(0xFFFFFFFF)),
                         ),
                       )
                     : _AppBarBtn(
@@ -762,15 +766,15 @@ _generatingWord
                         onTap: () async {
                           if (responseData == null) return;
                           setState(() => _generatingWord = true);
-                          final error = await SrsWordService.generateAndOpen(
-                            responseData!,
-                          );
+                          final error =
+                              await SrsWordService.generateAndOpen(
+                                  responseData!);
                           if (!mounted) return;
                           setState(() => _generatingWord = false);
                           if (error != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(error)),
-                            );
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(
+                                    SnackBar(content: Text(error)));
                           }
                         },
                       ),
@@ -780,47 +784,52 @@ _generatingWord
         ],
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator(color: _pink))
+          ? const Center(
+              child: CircularProgressIndicator(color: _pink))
           : errorMessage != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline, color: _pink, size: 48),
-                    const SizedBox(height: 16),
-                    Text(
-                      errorMessage!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: _textGrey),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          loading = true;
-                          errorMessage = null;
-                        });
-                        loadPreview();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _pink,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: _pink, size: 48),
+                        const SizedBox(height: 16),
+                        Text(errorMessage!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: _textGrey)),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              loading = true;
+                              errorMessage = null;
+                            });
+                            loadPreview();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _pink,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Reintentar'),
                         ),
-                      ),
-                      child: const Text('Reintentar'),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            )
-          : _buildWordViewer(),
+                  ),
+                )
+              : _buildWordViewer(),
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AppBar button
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _AppBarBtn extends StatelessWidget {
   final String label;
@@ -840,23 +849,21 @@ class _AppBarBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 15, color: Color(0xFFFFFFFF)),
+            Icon(icon, size: 15, color: const Color(0xFFFFFFFF)),
             const SizedBox(width: 5),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFFFFFFFF),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text(label,
+                style: const TextStyle(
+                    color: Color(0xFFFFFFFF),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
           ],
         ),
       ),
