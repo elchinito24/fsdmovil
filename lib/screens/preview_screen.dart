@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'package:vector_math/vector_math_64.dart' as vmath;
 import 'package:fsdmovil/services/api_service.dart';
 import 'package:fsdmovil/services/srs_word_service.dart';
 
@@ -8,7 +9,7 @@ const _darkBg = Color(0xFF0F1017);
 const _textGrey = Color(0xFF8E8E93);
 
 // Word document colors
-const _docBg = Colors.white;
+const _docBg = Color(0xFFFFFFFF);
 const _docText = Color(0xFF1A1A1A);
 const _docTextLight = Color(0xFF444444);
 const _docHeading1 = Color(0xFF1F3864); // Word navy blue
@@ -36,6 +37,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
       TransformationController();
   bool _transformSet = false;
   double _fitScale = 0.01;
+  final GlobalKey _viewerKey = GlobalKey();
+  final GlobalKey _childKey = GlobalKey();
 
   @override
   void initState() {
@@ -49,8 +52,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
     const docWidth = 794.0;
     const docHeight = 1123.0;
     final screenSize = MediaQuery.of(context).size;
-    final scaleX = screenSize.width / docWidth;
-    final scaleY = screenSize.height / docHeight;
+    // final scaleX = screenSize.width / docWidth;
+    // final scaleY = screenSize.height / docHeight;
     // Use the larger scale so the page always fills at least one axis and
     // cannot be zoomed out smaller than the device (prevents the sheet
     // from becoming visually tiny).
@@ -76,9 +79,71 @@ class _PreviewScreenState extends State<PreviewScreen> {
             _transformController.value = Matrix4.identity()
               ..translate(offsetX, offsetY)
               ..scale(scale, scale, 1);
+            // Clamp after initial transform to ensure boundaries
+            _clampTransform();
           }
         });
       }
+    }
+  }
+
+  void _clampTransform({double marginPx = 4.0}) {
+    try {
+      if (_viewerKey.currentContext == null || _childKey.currentContext == null) return;
+      final RenderBox viewerBox = _viewerKey.currentContext!.findRenderObject() as RenderBox;
+      final viewerSize = viewerBox.size;
+      final RenderBox childBox = _childKey.currentContext!.findRenderObject() as RenderBox;
+      final childSize = childBox.size;
+
+      final matrix = _transformController.value.clone();
+      final scale = matrix.getMaxScaleOnAxis();
+
+      // Transform the four corners of the child to viewport coordinates
+      final corners = [
+        vmath.Vector3(0, 0, 0),
+        vmath.Vector3(childSize.width, 0, 0),
+        vmath.Vector3(0, childSize.height, 0),
+        vmath.Vector3(childSize.width, childSize.height, 0),
+      ].map((v) {
+        final tv = matrix.transform3(v);
+        return Offset(tv.x, tv.y);
+      }).toList();
+
+      final minX = corners.map((c) => c.dx).reduce(min);
+      final maxX = corners.map((c) => c.dx).reduce(max);
+      final minY = corners.map((c) => c.dy).reduce(min);
+      final maxY = corners.map((c) => c.dy).reduce(max);
+
+      double dx = 0.0;
+      double dy = 0.0;
+
+      // Horizontal
+      if ((maxX - minX) <= (viewerSize.width - marginPx * 2)) {
+        final targetCenter = viewerSize.width / 2;
+        final childCenter = (minX + maxX) / 2;
+        dx = targetCenter - childCenter;
+      } else {
+        if (minX > marginPx) dx = marginPx - minX;
+        if (maxX < viewerSize.width - marginPx) dx = (viewerSize.width - marginPx) - maxX;
+      }
+
+      // Vertical
+      if ((maxY - minY) <= (viewerSize.height - marginPx * 2)) {
+        final targetCenter = viewerSize.height / 2;
+        final childCenter = (minY + maxY) / 2;
+        dy = targetCenter - childCenter;
+      } else {
+        if (minY > marginPx) dy = marginPx - minY;
+        if (maxY < viewerSize.height - marginPx) dy = (viewerSize.height - marginPx) - maxY;
+      }
+
+      if (dx.abs() > 0.5 || dy.abs() > 0.5) {
+        // Translate needs to be in child coordinate space (divide by scale)
+        matrix.translate(dx / scale, dy / scale);
+        _transformController.value = matrix;
+      }
+    } catch (_) {
+      // ignore errors if layout not ready
     }
   }
 
@@ -305,7 +370,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
       children: rows.map((row) {
         return TableRow(
           decoration: BoxDecoration(
-            color: row == rows.first ? _docTableHeader : Colors.white,
+            color: row == rows.first ? _docTableHeader : Color(0xFFFFFFFF),
           ),
           children: [
             Padding(
@@ -483,7 +548,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
               child: Text(
                 'Página $pageNum',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.40),
+                  color: Color(0xFFFFFFFF).withOpacity(0.40),
                   fontSize: 11,
                 ),
               ),
@@ -497,7 +562,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   color: _docBg,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.40),
+                      color: Color(0xFF000000).withOpacity(0.40),
                       blurRadius: 18,
                       spreadRadius: 1,
                       offset: const Offset(0, 4),
@@ -601,6 +666,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
         // ── Gray Word desktop ─────────────────────────────────────────────
         Expanded(
           child: Container(
+            key: _viewerKey,
             color: const Color(0xFF525659),
             child: InteractiveViewer(
                       transformationController: _transformController,
@@ -627,9 +693,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
                             ..translate(offsetX, offsetY)
                             ..scale(newScale, newScale, 1);
                           _transformController.value = matrix;
+                          // After snapping scale, ensure translation stays within bounds
+                          _clampTransform();
                         }
                       },
                       child: SizedBox(
+                    key: _childKey,
                     width: 794.0,
                     child: Column(
                       children: [
@@ -682,7 +751,7 @@ _generatingWord
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: Color(0xFFFFFFFF),
                           ),
                         ),
                       )
@@ -778,12 +847,12 @@ class _AppBarBtn extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 15, color: Colors.white),
+            Icon(icon, size: 15, color: Color(0xFFFFFFFF)),
             const SizedBox(width: 5),
             Text(
               label,
               style: const TextStyle(
-                color: Colors.white,
+                color: Color(0xFFFFFFFF),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
