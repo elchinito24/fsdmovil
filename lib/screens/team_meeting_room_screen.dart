@@ -27,6 +27,7 @@ class _TeamMeetingRoomScreenState extends State<TeamMeetingRoomScreen> {
   String title = 'Reunión de equipo';
   String subtitle = '';
   String? errorMessage;
+  bool _endingMeeting = false;
 
   @override
   void initState() {
@@ -107,20 +108,43 @@ class _TeamMeetingRoomScreenState extends State<TeamMeetingRoomScreen> {
   }
 
   Future<void> _endMeeting() async {
+    if (_endingMeeting) return;
+
+    setState(() {
+      _endingMeeting = true;
+    });
+
     try {
       await ApiService.endTeamMeeting(widget.sessionId);
+
       if (!mounted) return;
+
       await _leaveRoom();
+
       if (!mounted) return;
-      context.pop();
+
+      if (isHost) {
+        context.go('/team-meeting-result/${widget.sessionId}');
+      } else {
+        context.pop();
+      }
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(
+            'Error al finalizar reunión: ${e.toString().replaceFirst('Exception: ', '')}',
+          ),
           backgroundColor: _pink,
         ),
       );
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        _endingMeeting = false;
+      });
     }
   }
 
@@ -343,11 +367,22 @@ class _TeamMeetingRoomScreenState extends State<TeamMeetingRoomScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: _endMeeting,
-                            icon: const Icon(Icons.stop_circle_outlined),
-                            label: const Text(
-                              'Finalizar',
-                              style: TextStyle(fontWeight: FontWeight.w800),
+                            onPressed: _endingMeeting ? null : _endMeeting,
+                            icon: _endingMeeting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.stop_circle_outlined),
+                            label: Text(
+                              _endingMeeting ? 'Finalizando...' : 'Finalizar',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: _pink,

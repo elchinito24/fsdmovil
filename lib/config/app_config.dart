@@ -11,7 +11,7 @@ class AppConfig {
 
     return const String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: 'http://172.17.4.127:8000/api/v1',
+      defaultValue: 'http://192.168.0.16:8000/api/v1',
     );
   }
 
