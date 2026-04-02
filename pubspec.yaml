@@ -52,6 +52,15 @@ dependencies:
   # Almacenamiento local (token JWT)
   shared_preferences: ^2.5.3
 
+  #Agregar la grabacion y permiso
+  record: ^6.0.0
+
+  # OAuth social login (Google, GitHub, Microsoft)
+  supabase_flutter: ^2.12.2
+
+  #reunion en equipo
+  livekit_client: ^2.5.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

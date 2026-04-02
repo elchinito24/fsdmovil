@@ -9,7 +9,7 @@ class Project {
     return Project(
       id: json['id'],
       name: json['name'] ?? '',
-      version: json['version'] ?? '1.0',
+      version: json['current_version'] ?? json['version'] ?? '1.0',
     );
   }
 }
