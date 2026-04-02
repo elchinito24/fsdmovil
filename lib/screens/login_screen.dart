@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:fsdmovil/services/auth_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
+import 'package:fsdmovil/providers/auth_provider.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF1C1C1E);
@@ -8,20 +10,21 @@ const _fieldBg = Color(0xFF2C2C2E);
 const _textGrey = Color(0xFF8E8E93);
 const _dividerColor = Color(0xFF3A3A3C);
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
 
-  bool _loading = false;
   bool _obscurePassword = true;
   String? _error;
+
+  String? _socialError;
 
   String? _validateEmail(String value) {
     if (value.isEmpty) return 'Email is required.';
@@ -59,28 +62,34 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() {
-      _loading = true;
       _error = null;
     });
 
-    try {
-      await AuthService.login(email: email, password: password);
+    final errorMsg = await ref.read(authProvider.notifier).login(email, password);
 
-      if (!mounted) return;
-      context.go('/dashboard');
-    } catch (e) {
-      if (!mounted) return;
+    if (!mounted) return;
+    if (errorMsg != null) {
       setState(() {
-        _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = errorMsg;
       });
       return;
     }
 
-    if (!mounted) return;
+    context.go('/dashboard');
+  }
+
+  Future<void> _socialLogin(OAuthProvider provider) async {
     setState(() {
-      _loading = false;
+      _socialError = null;
     });
+    final errorMsg = await ref.read(authProvider.notifier).socialLogin(provider);
+    if (!mounted) return;
+    if (errorMsg != null) {
+      setState(() {
+        _socialError = errorMsg;
+      });
+    }
+    // La navegación la maneja ref.listen abajo cuando isAuthenticated cambia
   }
 
   @override
@@ -94,6 +103,14 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final constrainedWidth = screenWidth > 520 ? 460.0 : double.infinity;
+    final isLoading = ref.watch(authProvider).isLoading;
+
+    // Navega a dashboard en cuanto isAuthenticated cambia a true (cubre social login)
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      if (!(previous?.isAuthenticated ?? false) && next.isAuthenticated) {
+        context.go('/dashboard');
+      }
+    });
 
     return Scaffold(
       backgroundColor: _darkBg,
@@ -209,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _passwordCtrl,
                       obscureText: _obscurePassword,
                       style: const TextStyle(color: Colors.white),
-                      onSubmitted: (_) => _loading ? null : _submit(),
+                      onSubmitted: (_) => isLoading ? null : _submit(),
                       decoration: InputDecoration(
                         hintText: '••••••••',
                         hintStyle: const TextStyle(color: _textGrey),
@@ -259,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 52,
                       child: ElevatedButton(
-                        onPressed: _loading ? null : _submit,
+                        onPressed: isLoading ? null : _submit,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _pink,
                           foregroundColor: Colors.white,
@@ -268,7 +285,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           elevation: 0,
                         ),
-                        child: _loading
+                        child: isLoading
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,
@@ -314,7 +331,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 36),
+                    const SizedBox(height: 24),
                     const Row(
                       children: [
                         Expanded(
@@ -341,29 +358,33 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                     const SizedBox(height: 24),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 16,
-                      runSpacing: 12,
+                    if (_socialError != null) ...[
+                      Text(
+                        _socialError!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: _pink, fontSize: 13),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         _SocialButton(
-                          onTap: () {},
-                          child: const Text(
-                            'G',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          label: 'Google',
+                          icon: const _GoogleIcon(),
+                          onTap: isLoading ? null : () => _socialLogin(OAuthProvider.google),
                         ),
+                        const SizedBox(width: 16),
                         _SocialButton(
-                          onTap: () {},
-                          child: const Icon(
-                            Icons.code,
-                            color: Colors.white,
-                            size: 24,
-                          ),
+                          label: 'GitHub',
+                          icon: const _GitHubIcon(),
+                          onTap: isLoading ? null : () => _socialLogin(OAuthProvider.github),
+                        ),
+                        const SizedBox(width: 16),
+                        _SocialButton(
+                          label: 'Microsoft',
+                          icon: const _MicrosoftIcon(),
+                          onTap: isLoading ? null : () => _socialLogin(OAuthProvider.azure),
                         ),
                       ],
                     ),
@@ -379,23 +400,91 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 class _SocialButton extends StatelessWidget {
-  final Widget child;
-  final VoidCallback onTap;
+  final String label;
+  final Widget icon;
+  final VoidCallback? onTap;
 
-  const _SocialButton({required this.child, required this.onTap});
+  const _SocialButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 56,
-        height: 56,
-        decoration: const BoxDecoration(
-          color: _fieldBg,
-          shape: BoxShape.circle,
+    return Tooltip(
+      message: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Opacity(
+          opacity: onTap == null ? 0.5 : 1.0,
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Center(child: icon),
+          ),
         ),
-        child: Center(child: child),
+      ),
+    );
+  }
+}
+
+// Google icon (G multicolor)
+class _GoogleIcon extends StatelessWidget {
+  const _GoogleIcon();
+  @override
+  Widget build(BuildContext context) {
+    return const Text(
+      'G',
+      style: TextStyle(
+        color: Color(0xFF4285F4),
+        fontSize: 22,
+        fontWeight: FontWeight.bold,
+        fontFamily: 'sans-serif',
+      ),
+    );
+  }
+}
+
+// GitHub icon
+class _GitHubIcon extends StatelessWidget {
+  const _GitHubIcon();
+  @override
+  Widget build(BuildContext context) {
+    return const Icon(Icons.code, color: Colors.white, size: 24);
+  }
+}
+
+// Microsoft icon (cuatro cuadros de colores)
+class _MicrosoftIcon extends StatelessWidget {
+  const _MicrosoftIcon();
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 22,
+      height: 22,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(width: 10, height: 10, color: const Color(0xFFF25022)),
+              const SizedBox(width: 2),
+              Container(width: 10, height: 10, color: const Color(0xFF7FBA00)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Container(width: 10, height: 10, color: const Color(0xFF00A4EF)),
+              const SizedBox(width: 2),
+              Container(width: 10, height: 10, color: const Color(0xFFFFB900)),
+            ],
+          ),
+        ],
       ),
     );
   }

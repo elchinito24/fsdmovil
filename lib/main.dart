@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:fsdmovil/config/app_config.dart';
 import 'package:fsdmovil/providers/theme_mode_provider.dart';
 import 'package:fsdmovil/router/app_router.dart';
 import 'package:fsdmovil/services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Supabase se inicializa siempre para el login social (OAuth)
+  if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnonKey.isNotEmpty) {
+    await Supabase.initialize(
+      url: AppConfig.supabaseUrl,
+      anonKey: AppConfig.supabaseAnonKey,
+    );
+  }
+
   await AuthService.initialize();
   runApp(const ProviderScope(child: MyApp()));
 }

@@ -214,7 +214,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await AuthService.logout();
 
       if (!mounted) return;
-      context.go('/login');
+      context.go('/login'); // deleteAccount no usa provider porque la cuenta ya no existe
     } catch (e) {
       if (!mounted) return;
 

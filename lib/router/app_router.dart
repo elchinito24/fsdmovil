@@ -72,6 +72,16 @@ Page<void> _slideTransition(
 final appRouter = GoRouter(
   initialLocation: '/splash',
   observers: [routeObserver],
+  redirect: (context, state) {
+    // El deep link fsdmovil://login-callback es manejado por supabase_flutter
+    // internamente. GoRouter no debe procesarlo como ruta.
+    final location = state.uri.toString();
+    if (location.startsWith('fsdmovil://login-callback') ||
+        location.contains('login-callback')) {
+      return '/login';
+    }
+    return null;
+  },
   routes: [
     GoRoute(
       path: '/splash',

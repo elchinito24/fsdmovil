@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
 import 'package:fsdmovil/services/auth_service.dart';
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
@@ -91,6 +92,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return null;
     } catch (e) {
       state = state.copyWith(isLoading: false);
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<String?> socialLogin(OAuthProvider provider) async {
+    try {
+      state = state.copyWith(isLoading: true);
+      await AuthService.socialLogin(provider);
+      state = state.copyWith(
+        isAuthenticated: true,
+        isLoading: false,
+        userEmail: AuthService.userEmail,
+      );
+      return null;
+    } catch (e) {
+      state = state.copyWith(isAuthenticated: false, isLoading: false);
       return e.toString().replaceFirst('Exception: ', '');
     }
   }

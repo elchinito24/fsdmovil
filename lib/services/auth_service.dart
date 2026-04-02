@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
 import 'package:fsdmovil/services/api_service.dart';
+import 'package:fsdmovil/services/supabase_auth_service.dart';
 
 class AuthService {
   static const _accessTokenKey = 'access_token';
@@ -157,6 +159,42 @@ class AuthService {
     }
   }
 
+  /// Login social via Supabase OAuth (Google, GitHub, Microsoft).
+  /// 1. Abre el navegador → Supabase devuelve access_token
+  /// 2. Se intercambia en /auth/social/exchange/ → Django devuelve {access, refresh, user}
+  static Future<void> socialLogin(OAuthProvider provider) async {
+    final supabaseToken = await SupabaseAuthService.signInWithProvider(provider);
+
+    try {
+      final response = await ApiService.plainDio.post(
+        '/auth/social/exchange/',
+        data: {'supabase_token': supabaseToken},
+      );
+
+      final data = Map<String, dynamic>.from(response.data);
+      final access = data['access']?.toString();
+      final refresh = data['refresh']?.toString();
+      final user = Map<String, dynamic>.from(data['user'] ?? {});
+
+      if (access == null || refresh == null) {
+        throw Exception('El servidor no devolvió tokens válidos.');
+      }
+
+      _accessToken = access;
+      _refreshToken = refresh;
+
+      await _prefs?.setString(_accessTokenKey, access);
+      await _prefs?.setString(_refreshTokenKey, refresh);
+
+      await _saveUserData(user);
+      ApiService.setAuthToken(access);
+    } on DioException catch (e) {
+      throw Exception(
+        _extractMessage(e, 'No se pudo completar el inicio de sesión social.'),
+      );
+    }
+  }
+
   static Future<bool> restoreSession() async {
     if (_accessToken != null && _accessToken!.isNotEmpty) {
       ApiService.setAuthToken(_accessToken!);
@@ -272,11 +310,18 @@ class AuthService {
 
     ApiService.clearAuthToken();
 
-    await _prefs?.remove(_accessTokenKey);
-    await _prefs?.remove(_refreshTokenKey);
-    await _prefs?.remove(_userEmailKey);
-    await _prefs?.remove(_userIdKey);
-    await _prefs?.remove(_firstNameKey);
-    await _prefs?.remove(_lastNameKey);
+    // Cerrar sesión de Supabase también para limpiar la sesión OAuth
+    try {
+      await SupabaseAuthService.signOut();
+    } catch (_) {}
+
+    // Asegurar que _prefs esté inicializado antes de limpiar
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs!.remove(_accessTokenKey);
+    await _prefs!.remove(_refreshTokenKey);
+    await _prefs!.remove(_userEmailKey);
+    await _prefs!.remove(_userIdKey);
+    await _prefs!.remove(_firstNameKey);
+    await _prefs!.remove(_lastNameKey);
   }
 }
