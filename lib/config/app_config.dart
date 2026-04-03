@@ -1,6 +1,14 @@
 import 'package:flutter/foundation.dart';
 
 class AppConfig {
+  // 'local' o 'supabase'
+  static const String authBackend = String.fromEnvironment(
+    'AUTH_BACKEND',
+    defaultValue: 'local',
+  );
+
+  static bool get useSupabase => authBackend == 'supabase';
+
   // Local: --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
   // Producción: --dart-define=API_BASE_URL=https://tu-servidor.com/api/v1
   static String get baseUrl {

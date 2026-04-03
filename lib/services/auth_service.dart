@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
+import 'package:fsdmovil/config/app_config.dart';
 import 'package:fsdmovil/services/api_service.dart';
 import 'package:fsdmovil/services/supabase_auth_service.dart';
 
@@ -56,19 +57,32 @@ class AuthService {
   }
 
   static String _extractMessage(DioException e, String defaultMsg) {
+    final status = e.response?.statusCode;
     final body = e.response?.data;
+
     if (body is Map) {
       if (body['detail'] != null) return body['detail'].toString();
       if (body['non_field_errors'] is List &&
           (body['non_field_errors'] as List).isNotEmpty) {
         return (body['non_field_errors'] as List).first.toString();
       }
-      for (final value in body.values) {
-        if (value is List && value.isNotEmpty) return value.first.toString();
-        if (value is String) return value;
+      for (final entry in body.entries) {
+        final value = entry.value;
+        if (value is List && value.isNotEmpty) {
+          return '${entry.key}: ${value.first}';
+        }
+        if (value is String) return '${entry.key}: $value';
       }
+      return body.toString();
     }
-    return defaultMsg;
+    if (body is String && body.isNotEmpty) return body;
+
+    if (e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout) {
+      return 'No se pudo conectar al servidor. Verifica tu conexión.';
+    }
+
+    return status != null ? '$defaultMsg (HTTP $status)' : defaultMsg;
   }
 
   static Future<void> _saveUserData(Map<String, dynamic> user) async {
@@ -141,6 +155,33 @@ class AuthService {
     required String password,
     required String passwordConfirm,
   }) async {
+    if (AppConfig.useSupabase) {
+      // 1. Registrar en Django primero (crea el usuario en custom_auth_user)
+      try {
+        await ApiService.plainDio.post(
+          '/auth/register/',
+          data: {
+            'first_name': firstName,
+            'last_name': lastName,
+            'email': email,
+            'password': password,
+            'password_confirm': passwordConfirm,
+          },
+        );
+      } on DioException catch (e) {
+        throw Exception(
+          _extractMessage(e, 'Error al registrar. Intenta nuevamente.'),
+        );
+      }
+      // 2. Registrar en Supabase (envía OTP al correo)
+      await SupabaseAuthService.signUpWithEmail(
+        email: email,
+        password: password,
+        firstName: firstName,
+        lastName: lastName,
+      );
+      return;
+    }
     try {
       await ApiService.plainDio.post(
         '/auth/register/',
@@ -155,6 +196,78 @@ class AuthService {
     } on DioException catch (e) {
       throw Exception(
         _extractMessage(e, 'Error al registrar. Intenta nuevamente.'),
+      );
+    }
+  }
+
+  static Future<void> verifyEmailCode({
+    required String email,
+    required String code,
+    String? firstName,
+    String? lastName,
+    String? password,
+  }) async {
+    if (AppConfig.useSupabase) {
+      final supabaseToken = await SupabaseAuthService.verifyEmailOtp(
+        email: email,
+        token: code,
+      );
+      try {
+        final response = await ApiService.plainDio.post(
+          '/auth/social/exchange/',
+          data: {'supabase_token': supabaseToken},
+        );
+        final data = Map<String, dynamic>.from(response.data);
+        final access = data['access']?.toString();
+        final refresh = data['refresh']?.toString();
+        final user = Map<String, dynamic>.from(data['user'] ?? {});
+        if (access == null || refresh == null) {
+          throw Exception('El servidor no devolvió tokens válidos.');
+        }
+        _accessToken = access;
+        _refreshToken = refresh;
+        await _prefs?.setString(_accessTokenKey, access);
+        await _prefs?.setString(_refreshTokenKey, refresh);
+        await _saveUserData(user);
+        ApiService.setAuthToken(access);
+      } on DioException catch (e) {
+        throw Exception(
+          _extractMessage(e, 'Error al verificar el código. Intenta nuevamente.'),
+        );
+      }
+      return;
+    }
+    try {
+      await ApiService.plainDio.post(
+        '/auth/verify-email/',
+        data: {'email': email, 'code': code},
+      );
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 400) {
+        throw Exception('Código inválido o expirado.');
+      }
+      throw Exception(
+        _extractMessage(e, 'Error al verificar el código. Intenta nuevamente.'),
+      );
+    }
+  }
+
+  static Future<void> resendVerificationCode({
+    required String email,
+  }) async {
+    if (AppConfig.useSupabase) {
+      await SupabaseAuthService.resendOtp(email: email);
+      return;
+    }
+    try {
+      await ApiService.plainDio.post(
+        '/auth/resend-verification/',
+        data: {'email': email},
+      );
+    } on DioException catch (e) {
+      throw Exception(
+        _extractMessage(e, 'Error al reenviar el código. Intenta nuevamente.'),
       );
     }
   }
