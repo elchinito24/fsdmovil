@@ -96,6 +96,39 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<String?> verifyEmailCode({
+    required String email,
+    required String code,
+    String? firstName,
+    String? lastName,
+    String? password,
+  }) async {
+    try {
+      state = state.copyWith(isLoading: true);
+      await AuthService.verifyEmailCode(
+        email: email,
+        code: code,
+        firstName: firstName,
+        lastName: lastName,
+        password: password,
+      );
+      state = state.copyWith(isLoading: false);
+      return null;
+    } catch (e) {
+      state = state.copyWith(isLoading: false);
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<String?> resendVerificationCode({required String email}) async {
+    try {
+      await AuthService.resendVerificationCode(email: email);
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
   Future<String?> socialLogin(OAuthProvider provider) async {
     try {
       state = state.copyWith(isLoading: true);

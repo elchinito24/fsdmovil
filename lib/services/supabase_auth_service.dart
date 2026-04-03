@@ -10,6 +10,63 @@ class SupabaseAuthService {
   static bool get _isInitialized =>
       AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnonKey.isNotEmpty;
 
+  /// Registra un nuevo usuario con email/password en Supabase.
+  /// Supabase envía automáticamente un OTP al correo para verificación.
+  static Future<void> signUpWithEmail({
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+  }) async {
+    if (!_isInitialized) {
+      throw Exception(
+        'Supabase no está configurado. Inicia la app con --dart-define=SUPABASE_URL=... y --dart-define=SUPABASE_ANON_KEY=...',
+      );
+    }
+    final response = await _client.auth.signUp(
+      email: email,
+      password: password,
+      data: {'first_name': firstName, 'last_name': lastName},
+    );
+    if (response.user == null) {
+      throw Exception('No se pudo crear la cuenta. Intenta nuevamente.');
+    }
+  }
+
+  /// Verifica el OTP de 6 dígitos enviado al correo tras el signUp.
+  /// Retorna el access_token de Supabase si la verificación fue exitosa.
+  static Future<String> verifyEmailOtp({
+    required String email,
+    required String token,
+  }) async {
+    try {
+      final response = await _client.auth.verifyOTP(
+        email: email,
+        token: token,
+        type: OtpType.signup,
+      );
+      final accessToken = response.session?.accessToken;
+      if (accessToken == null) {
+        throw Exception('Código inválido o expirado. Solicita uno nuevo.');
+      }
+      return accessToken;
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('expired') || msg.contains('otp')) {
+        throw Exception('El código expiró. Presiona "Reenviar" para obtener uno nuevo.');
+      }
+      if (msg.contains('invalid') || msg.contains('incorrect')) {
+        throw Exception('Código incorrecto. Verifica e intenta de nuevo.');
+      }
+      throw Exception(e.message);
+    }
+  }
+
+  /// Reenvía el OTP de verificación al correo.
+  static Future<void> resendOtp({required String email}) async {
+    await _client.auth.resend(type: OtpType.signup, email: email);
+  }
+
   /// Abre el navegador para autenticarse con el proveedor indicado.
   /// Retorna el access_token de Supabase cuando el usuario completa el flujo.
   /// Lanza Exception si el usuario cancela o hay timeout.

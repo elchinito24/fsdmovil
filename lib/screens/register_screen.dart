@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,6 +25,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmPasswordCtrl = TextEditingController();
+
+  // OTP verification step
+  int _step = 0; // 0 = form, 1 = verify code
+  final List<TextEditingController> _codeCtrl =
+      List.generate(6, (_) => TextEditingController());
+  final List<FocusNode> _codeFocus = List.generate(6, (_) => FocusNode());
+
+  // Datos guardados al pasar al paso 2
+  String _savedFirstName = '';
+  String _savedLastName = '';
+  String _savedEmail = '';
+  String _savedPassword = '';
+
+  // Contador reenvío OTP
+  int _resendSeconds = 0;
+  Timer? _resendTimer;
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -101,9 +118,92 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     setState(() {
       _loading = false;
+      _step = 1; // ir al paso de verificación
+      _error = null;
+      // Guardar datos antes de que los controllers puedan cambiar
+      _savedFirstName = _firstNameCtrl.text.trim();
+      _savedLastName = _lastNameCtrl.text.trim();
+      _savedEmail = _emailCtrl.text.trim();
+      _savedPassword = _passwordCtrl.text;
+    });
+    _startResendTimer();
+  }
+
+  Future<void> _verifyCode() async {
+    FocusScope.of(context).unfocus();
+
+    final code = _codeCtrl.map((c) => c.text).join();
+    if (code.length < 6) {
+      setState(() => _error = 'Ingresa el código de 6 dígitos.');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
     });
 
+    final error = await ref.read(authProvider.notifier).verifyEmailCode(
+      email: _savedEmail,
+      code: code,
+      firstName: _savedFirstName,
+      lastName: _savedLastName,
+      password: _savedPassword,
+    );
+
+    if (!mounted) return;
+
+    if (error != null) {
+      setState(() {
+        _loading = false;
+        _error = error;
+      });
+      return;
+    }
+
+    setState(() => _loading = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('¡Cuenta creada con éxito! Inicia sesión.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
     context.go('/login');
+  }
+
+  void _startResendTimer() {
+    _resendTimer?.cancel();
+    setState(() => _resendSeconds = 60);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() {
+        _resendSeconds--;
+        if (_resendSeconds <= 0) t.cancel();
+      });
+    });
+  }
+
+  Future<void> _resendCode() async {
+    if (_resendSeconds > 0) return;
+    setState(() => _error = null);
+    final error = await ref
+        .read(authProvider.notifier)
+        .resendVerificationCode(email: _savedEmail);
+    if (!mounted) return;
+    if (error != null) {
+      setState(() => _error = error);
+    } else {
+      _startResendTimer();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Código reenviado. Revisa tu correo.'),
+          backgroundColor: Color(0xFF1E2030),
+        ),
+      );
+    }
   }
 
   Color _strengthColor(_PasswordStrength s) {
@@ -155,6 +255,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmPasswordCtrl.dispose();
+    for (final c in _codeCtrl) c.dispose();
+    for (final f in _codeFocus) f.dispose();
+    _resendTimer?.cancel();
     super.dispose();
   }
 
@@ -178,7 +281,186 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-            child: Column(
+            child: _step == 1
+                ? _buildVerifyStep()
+                : _buildFormStep(strengthColor, strengthLabel, strengthValue),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVerifyStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const AppLogo(size: 50),
+            const SizedBox(width: 10),
+            const Text(
+              'FSD',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 40),
+        const Text(
+          'Verifica tu',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 30,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const Text(
+          'correo electrónico',
+          style: TextStyle(
+            color: _pink,
+            fontSize: 30,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Enviamos un código de 6 dígitos a\n${_emailCtrl.text.trim()}',
+          style: const TextStyle(color: _textGrey, fontSize: 14),
+        ),
+        const SizedBox(height: 40),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(6, (i) {
+            return SizedBox(
+              width: 46,
+              height: 56,
+              child: TextField(
+                controller: _codeCtrl[i],
+                focusNode: _codeFocus[i],
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                maxLength: 1,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+                decoration: InputDecoration(
+                  counterText: '',
+                  filled: true,
+                  fillColor: _fieldBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _pink, width: 2),
+                  ),
+                ),
+                onChanged: (v) {
+                  if (v.isNotEmpty && i < 5) {
+                    _codeFocus[i + 1].requestFocus();
+                  } else if (v.isEmpty && i > 0) {
+                    _codeFocus[i - 1].requestFocus();
+                  }
+                },
+              ),
+            );
+          }),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _error!,
+            style: const TextStyle(color: _pink, fontSize: 13),
+          ),
+        ],
+        const SizedBox(height: 32),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: _loading ? null : _verifyCode,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _pink,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
+            child: _loading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Text(
+                    'Verificar cuenta',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        Center(
+          child: GestureDetector(
+            onTap: (_loading || _resendSeconds > 0) ? null : _resendCode,
+            child: RichText(
+              text: TextSpan(
+                children: [
+                  const TextSpan(
+                    text: '¿No recibiste el código? ',
+                    style: TextStyle(color: _textGrey, fontSize: 14),
+                  ),
+                  TextSpan(
+                    text: _resendSeconds > 0
+                        ? 'Reenviar (${_resendSeconds}s)'
+                        : 'Reenviar',
+                    style: TextStyle(
+                      color: _resendSeconds > 0 ? _textGrey : _pink,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Center(
+          child: GestureDetector(
+            onTap: () => setState(() {
+              _step = 0;
+              _error = null;
+              for (final c in _codeCtrl) c.clear();
+            }),
+            child: const Text(
+              '← Cambiar correo',
+              style: TextStyle(color: _textGrey, fontSize: 14),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFormStep(
+    Color strengthColor,
+    String strengthLabel,
+    double strengthValue,
+  ) {
+    return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -487,10 +769,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                 ),
               ],
-            ),
-          ),
-        ),
-      ),
-    );
+            );
   }
 }
