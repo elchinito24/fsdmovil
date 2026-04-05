@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
 import 'package:fsdmovil/services/auth_service.dart';
 import 'package:fsdmovil/services/srs_realtime_service.dart';
+import 'package:fsdmovil/services/srs_word_service.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF0F1017);
@@ -46,6 +47,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Map<String, dynamic>? fullResponse;
   Map<String, dynamic>? srs;
   String? serverUpdatedAt;
+  String? _projectCode;
 
   bool _connected = false;
   bool _syncing = false;
@@ -55,6 +57,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
   SrsRealtimeService? _realtimeService;
   Timer? _debounceTimer;
+
+  String _saveStatus = 'idle'; // idle | saving | saved | error
+  bool _downloading = false;
 
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, FocusNode> _focusNodes = {};
@@ -280,7 +285,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> loadSrs() async {
     try {
-      final data = await ApiService.getProjectSrs(widget.projectId);
+      final results = await Future.wait([
+        ApiService.getProjectSrs(widget.projectId),
+        ApiService.getProject(widget.projectId),
+      ]);
+      final data = results[0];
+      final projectData = results[1];
       final srsData = Map<String, dynamic>.from(data['srs_data'] ?? {});
 
       _applySrsDataToControllers(srsData);
@@ -288,6 +298,15 @@ class _EditorScreenState extends State<EditorScreen> {
       setState(() {
         fullResponse = data;
         srs = srsData;
+        final rawCode = (projectData['code'] ??
+                projectData['projectCode'] ??
+                projectData['project_code'] ??
+                data['code'] ??
+                data['projectCode'] ??
+                data['project_code'])
+            ?.toString()
+            .trim();
+        _projectCode = (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
         loading = false;
         errorMessage = null;
       });
@@ -418,6 +437,12 @@ class _EditorScreenState extends State<EditorScreen> {
     final specificRequirements = Map<String, dynamic>.from(
       srsData['specificRequirements'] ?? {},
     );
+
+    // Keep _projectCode in sync from srs metadata (primary source after first load)
+    final codeFromMeta = metadata['projectCode']?.toString().trim();
+    if (codeFromMeta != null && codeFromMeta.isNotEmpty) {
+      _projectCode = codeFromMeta;
+    }
 
     _setText('projectName', _safeText(metadata['projectName']));
     _setText(
@@ -580,9 +605,12 @@ class _EditorScreenState extends State<EditorScreen> {
     return {
       'metadata': {
         'projectName': _controllers['projectName']!.text.trim(),
+        'version': _controllers['version']!.text.trim(),
         'createdAt': _controllers['date']!.text.trim(),
         'owner': _controllers['author']!.text.trim(),
         'organization': _controllers['organization']!.text.trim(),
+        if (_projectCode != null && _projectCode!.isNotEmpty)
+          'projectCode': _projectCode,
       },
       'introduction': {
         'purpose': _controllers['purpose']!.text.trim(),
@@ -640,42 +668,160 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> saveChanges() async {
-    try {
-      setState(() {
-        saving = true;
+    final projectName = _controllers['projectName']!.text.trim();
+    if (projectName.isEmpty) {
+      if (!mounted) return;
+      setState(() => _saveStatus = 'error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El nombre del proyecto es obligatorio'),
+          backgroundColor: _pink,
+        ),
+      );
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
       });
+      return;
+    }
 
+    // Ensure projectCode is available before saving (server requires it)
+    if (_projectCode == null || _projectCode!.trim().isEmpty) {
+      try {
+        final projectData = await ApiService.getProject(widget.projectId);
+        if (!mounted) return;
+        final rawCode = (projectData['code'] ??
+                projectData['projectCode'] ??
+                projectData['project_code'] ??
+                fullResponse?['code'] ??
+                fullResponse?['projectCode'] ??
+                fullResponse?['project_code'])
+            ?.toString()
+            .trim();
+        _projectCode = (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
+      } catch (_) {}
+    }
+
+    if (_projectCode == null || _projectCode!.trim().isEmpty) {
+      if (!mounted) return;
+      setState(() => _saveStatus = 'error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo obtener el código del proyecto. Intente recargar.'),
+          backgroundColor: _pink,
+        ),
+      );
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
+      });
+      return;
+    }
+
+    setState(() {
+      saving = true;
+      _saveStatus = 'saving';
+    });
+
+    try {
       final updatedSrs = _buildSrsFromControllers();
 
       await ApiService.updateProjectSrs(widget.projectId, {
         'srs_data': updatedSrs,
+        'projectCode': _projectCode,
       });
 
+      if (!mounted) return;
       setState(() {
         srs = updatedSrs;
+        _saveStatus = 'saved';
         _lastRealtimeMessage = 'Cambios guardados manualmente';
       });
 
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cambios guardados correctamente'),
-          backgroundColor: _pink,
-        ),
-      );
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
+      });
     } catch (e) {
       if (!mounted) return;
-
+      setState(() => _saveStatus = 'error');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al guardar: $e'), backgroundColor: _pink),
       );
-    } finally {
-      if (!mounted) return;
-      setState(() {
-        saving = false;
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
       });
+    } finally {
+      if (mounted) setState(() => saving = false);
     }
+  }
+
+  Future<void> _downloadDocx() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final data = fullResponse ?? {'srs_data': srs ?? {}};
+      await SrsWordService.generateAndOpen(data);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al generar documento: $e'),
+          backgroundColor: _pink,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  Widget _buildSaveButton() {
+    Color color;
+    String label;
+    Widget iconWidget;
+
+    if (_saveStatus == 'saving') {
+      color = const Color(0xFF55A6FF);
+      label = 'Guardando';
+      iconWidget = SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2, color: color),
+      );
+    } else if (_saveStatus == 'saved') {
+      color = const Color(0xFF1BC47D);
+      label = 'Guardado';
+      iconWidget = const Icon(
+        Icons.check_circle_outline_rounded,
+        size: 16,
+        color: Color(0xFF1BC47D),
+      );
+    } else if (_saveStatus == 'error') {
+      color = _pink;
+      label = 'Error';
+      iconWidget = const Icon(
+        Icons.error_outline_rounded,
+        size: 16,
+        color: _pink,
+      );
+    } else {
+      color = Colors.white;
+      label = 'Guardar';
+      iconWidget = const Icon(Icons.save_outlined, size: 16, color: Colors.white);
+    }
+
+    return TextButton.icon(
+      onPressed: saving ? null : saveChanges,
+      icon: iconWidget,
+      label: Text(
+        label,
+        style: TextStyle(
+          color: saving ? _textGrey : color,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
+    );
   }
 
   Future<void> _showConflictDialog({
@@ -867,30 +1013,81 @@ class _EditorScreenState extends State<EditorScreen> {
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(width: 4),
                         const Expanded(
                           child: Text(
-                            'Editor colaborativo SRS',
+                            'Editor SRS',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
-                              fontSize: 18,
+                              fontSize: 17,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        ElevatedButton.icon(
-                          onPressed: () =>
-                              context.push('/preview/${widget.projectId}'),
-                          icon: const Icon(Icons.visibility_outlined),
-                          label: const Text('Vista previa'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _pink,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
+                        _buildSaveButton(),
+                        PopupMenuButton<String>(
+                          color: _cardBg,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            side: const BorderSide(color: _borderColor),
                           ),
+                          icon: const Icon(
+                            Icons.more_vert_rounded,
+                            color: Colors.white,
+                          ),
+                          onSelected: (value) {
+                            if (value == 'preview') {
+                              context.push('/preview/${widget.projectId}');
+                            } else if (value == 'download') {
+                              _downloadDocx();
+                            }
+                          },
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(
+                              value: 'preview',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.visibility_outlined,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Vista previa',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'download',
+                              enabled: !_downloading,
+                              child: Row(
+                                children: [
+                                  _downloading
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: _pink,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.download_outlined,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    _downloading ? 'Generando...' : 'Descargar DOCX',
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -905,6 +1102,7 @@ class _EditorScreenState extends State<EditorScreen> {
                           lastMessage: _lastRealtimeMessage,
                           conflictMessage: _conflictMessage,
                           connectedUsers: connectedUsers,
+                          onReconnect: _connectRealtime,
                         ),
                         const SizedBox(height: 16),
                         SizedBox(
@@ -1034,6 +1232,7 @@ class _RealtimeStatusCard extends StatelessWidget {
   final String? lastMessage;
   final String? conflictMessage;
   final List<PresenceUser> connectedUsers;
+  final Future<void> Function()? onReconnect;
 
   const _RealtimeStatusCard({
     required this.connected,
@@ -1041,6 +1240,7 @@ class _RealtimeStatusCard extends StatelessWidget {
     required this.lastMessage,
     required this.conflictMessage,
     required this.connectedUsers,
+    this.onReconnect,
   });
 
   @override
@@ -1084,14 +1284,38 @@ class _RealtimeStatusCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                statusText,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
+              Expanded(
+                child: Text(
+                  statusText,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
                 ),
               ),
+              if (!connected && onReconnect != null)
+                TextButton.icon(
+                  onPressed: () => onReconnect!(),
+                  icon: const Icon(
+                    Icons.refresh_rounded,
+                    size: 15,
+                    color: _pink,
+                  ),
+                  label: const Text(
+                    'Reconectar',
+                    style: TextStyle(
+                      color: _pink,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
             ],
           ),
           if (lastMessage != null && lastMessage!.trim().isNotEmpty) ...[
@@ -1128,13 +1352,38 @@ class _RealtimeStatusCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 14),
-          const Text(
-            'Usuarios conectados',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Usuarios conectados',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              if (connectedUsers.isNotEmpty)
+                GestureDetector(
+                  onTap: () => showModalBottomSheet(
+                    context: context,
+                    backgroundColor: _cardBg,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                    ),
+                    builder: (_) => _CollaboratorsSheet(users: connectedUsers),
+                  ),
+                  child: const Text(
+                    'Ver todos',
+                    style: TextStyle(
+                      color: _pink,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 10),
           if (connectedUsers.isEmpty)
@@ -1146,7 +1395,7 @@ class _RealtimeStatusCard extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: connectedUsers.map((user) {
+              children: connectedUsers.take(4).map((user) {
                 return Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -1168,6 +1417,109 @@ class _RealtimeStatusCard extends StatelessWidget {
                 );
               }).toList(),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CollaboratorsSheet extends StatelessWidget {
+  final List<PresenceUser> users;
+
+  const _CollaboratorsSheet({required this.users});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Usuarios en esta sesión',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded, color: _textGrey),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${users.length} usuario${users.length == 1 ? '' : 's'} conectado${users.length == 1 ? '' : 's'} ahora mismo',
+            style: const TextStyle(color: _textGrey, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          ...users.map(
+            (user) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: _pink.withOpacity(0.18),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: _pink.withOpacity(0.4)),
+                    ),
+                    child: Center(
+                      child: Text(
+                        user.name.isNotEmpty
+                            ? user.name[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          color: _pink,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      user.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0x22E8365D),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0x55E8365D)),
+                    ),
+                    child: const Text(
+                      'Activo',
+                      style: TextStyle(
+                        color: _pink,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

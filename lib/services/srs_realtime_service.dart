@@ -132,7 +132,7 @@ class SrsRealtimeService {
   Timer? _reconnectTimer;
   bool _disposed = false;
   int _retryCount = 0;
-  final int _maxRetry = 6;
+  final int _maxRetry = 8;
 
   SrsRealtimeService({
     required this.projectId,

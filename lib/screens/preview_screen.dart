@@ -3,18 +3,26 @@ import 'dart:math';
 import 'package:fsdmovil/services/api_service.dart';
 import 'package:fsdmovil/services/srs_word_service.dart';
 
-const _pink = Color(0xFFE8365D);
+// ── Brand / UI tokens ────────────────────────────────────────────────────────
+const _primary = Color(0xFFE8365D);
 const _darkBg = Color(0xFF0F1017);
-const _textGrey = Color(0xFF8E8E93);
+const _bgSecondary = Color(0xFF13151F);
+const _border = Color(0xFF1F2130);
+const _textPrimary = Color(0xFFFFFFFF);
+const _textSecondary = Color(0xFFB0B8C8);
+const _textTertiary = Color(0xFF6B7280);
 
+// ── Document (always light, simulates printed page) ───────────────────────────
 const _docBg = Color(0xFFFFFFFF);
-const _docText = Color(0xFF1A1A1A);
+const _docText = Color(0xFF0F172A);
 const _docTextLight = Color(0xFF444444);
 const _docHeading1 = Color(0xFF1F3864);
 const _docHeading2 = Color(0xFF2E5197);
 const _docAccent = Color(0xFF2E5197);
-const _docBorder = Color(0xFFD0D7DE);
+const _docBorder = Color(0xFFE2E8F0);
 const _docTableHeader = Color(0xFFD6E4F0);
+const _wordBlue = Color(0xFF2B579A);
+
 
 class PreviewScreen extends StatefulWidget {
   final int projectId;
@@ -539,7 +547,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
             child: Text(
                 'Documento generado por FSD  •  v$version',
                 style:
-                    const TextStyle(fontSize: 11, color: _textGrey)),
+                    const TextStyle(fontSize: 11, color: _textTertiary)),
           ),
         ],
       ),
@@ -554,11 +562,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: Text('Pagina $pageNum',
+              child: Text('Página $pageNum',
                   style: TextStyle(
-                      color:
-                          const Color(0xFFFFFFFF).withOpacity(0.40),
-                      fontSize: 11)),
+                      color: Colors.white.withOpacity(0.35),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.05)),
             ),
             SizedBox(
               width: 794,
@@ -568,11 +577,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   color: _docBg,
                   boxShadow: [
                     BoxShadow(
-                      color:
-                          const Color(0xFF000000).withOpacity(0.40),
-                      blurRadius: 18,
-                      spreadRadius: 1,
-                      offset: const Offset(0, 4),
+                      color: Colors.black.withOpacity(0.45),
+                      blurRadius: 24,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
@@ -619,83 +627,75 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   // ───────────────────────────────────────────────────────────────────────
-  // Word viewer
+  // Viewer
   // ───────────────────────────────────────────────────────────────────────
 
   Widget _buildWordViewer() {
-    final srs =
-        Map<String, dynamic>.from(responseData?['srs_data'] ?? {});
-    final metadata =
-        Map<String, dynamic>.from(srs['metadata'] ?? {});
-    final projectName =
-        safeText(metadata['projectName'], fallback: 'Documento');
-    final version =
-        safeText(responseData?['version'], fallback: '1.0');
+    final srs = Map<String, dynamic>.from(responseData?['srs_data'] ?? {});
+    final metadata = Map<String, dynamic>.from(srs['metadata'] ?? {});
+    final projectName = safeText(metadata['projectName'], fallback: 'Documento');
+    final version = safeText(responseData?['version'], fallback: '1.0');
     final safeName = projectName.replaceAll(' ', '_');
 
     return Column(
       children: [
-        // Barra de titulo estilo Word
+        // ── Word-style title bar ──────────────────────────────────────────
         Container(
-          color: const Color(0xFF1E1E1E),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          color: const Color(0xFF1A1C27),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           child: Row(
             children: [
-              const Icon(Icons.description_outlined,
-                  color: Color(0xFF2B579A), size: 17),
+              const Icon(Icons.description_outlined, color: _wordBlue, size: 16),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('SRS_$safeName.docx',
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Color(0xFFCCCCCC), fontSize: 12.5)),
+                child: Text(
+                  'SRS_$safeName.docx',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _textSecondary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color:
-                      const Color(0xFF2B579A).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                      color: const Color(0xFF2B579A)
-                          .withOpacity(0.4)),
+                  color: _wordBlue.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: _wordBlue.withOpacity(0.35)),
                 ),
-                child: Text('v$version',
-                    style: const TextStyle(
-                        color: Color(0xFF7AB0E8),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600)),
+                child: Text(
+                  'v$version',
+                  style: const TextStyle(
+                    color: Color(0xFF7AB0E8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
         ),
 
-        // Escritorio gris estilo Word
+        // ── Document desktop ──────────────────────────────────────────────
         Expanded(
           child: Container(
             key: _viewerKey,
             color: const Color(0xFF525659),
             child: Listener(
-              // Interrumpir inercia al tocar la pantalla
               onPointerDown: (_) {
                 final snap = _transformController.value.clone();
                 _transformController.value = snap;
               },
               child: InteractiveViewer(
                 transformationController: _transformController,
-                // Sin limite automatico de Flutter: lo manejamos nosotros
                 boundaryMargin: const EdgeInsets.all(double.infinity),
-                // No puede hacer zoom-out mas pequeno que el fit
                 minScale: _fitScale,
                 maxScale: 3.0,
                 constrained: false,
                 panAxis: PanAxis.free,
-                // Friction muy alto = fling casi nulo al soltar el dedo
                 interactionEndFrictionCoefficient: 0.01,
-                // El clamp se aplica via _transformController.addListener
-                // en cada frame, incluyendo la animacion de inercia post-fling.
                 child: SizedBox(
                   key: _childKey,
                   width: 794.0,
@@ -724,57 +724,76 @@ class _PreviewScreenState extends State<PreviewScreen> {
     return Scaffold(
       backgroundColor: _darkBg,
       appBar: AppBar(
-        backgroundColor: _darkBg,
-        foregroundColor: Colors.white,
+        backgroundColor: _bgSecondary,
+        foregroundColor: _textPrimary,
         elevation: 0,
-        title: const Text('Vista Previa',
-            style: TextStyle(fontWeight: FontWeight.w800)),
+        surfaceTintColor: Colors.transparent,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: _border),
+        ),
+        title: const Text(
+          'Vista Previa',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 17,
+            color: _textPrimary,
+          ),
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 14),
             child: Row(
               children: [
-                _AppBarBtn(
+                // PDF – coming soon
+                _ToolbarBtn(
                   label: 'PDF',
                   icon: Icons.picture_as_pdf_outlined,
-                  color: _pink,
-                  onTap: () =>
-                      ScaffoldMessenger.of(context).showSnackBar(
+                  color: _primary,
+                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text(
-                          'La descarga de PDF estara disponible pronto'),
+                      content:
+                          Text('La descarga de PDF estará disponible pronto'),
+                      behavior: SnackBarBehavior.floating,
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Word download
                 _generatingWord
-                    ? const Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 12),
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
+                    ? const SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Color(0xFFFFFFFF)),
+                              color: _textPrimary,
+                            ),
+                          ),
                         ),
                       )
-                    : _AppBarBtn(
+                    : _ToolbarBtn(
                         label: 'Word',
                         icon: Icons.description_outlined,
-                        color: const Color(0xFF2B579A),
+                        color: _wordBlue,
                         onTap: () async {
                           if (responseData == null) return;
                           setState(() => _generatingWord = true);
-                          final error =
-                              await SrsWordService.generateAndOpen(
-                                  responseData!);
+                          final error = await SrsWordService.generateAndOpen(
+                              responseData!);
                           if (!mounted) return;
                           setState(() => _generatingWord = false);
                           if (error != null) {
-                            ScaffoldMessenger.of(context)
-                                .showSnackBar(
-                                    SnackBar(content: Text(error)));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(error),
+                                behavior: SnackBarBehavior.floating,
+                                backgroundColor: _primary,
+                              ),
+                            );
                           }
                         },
                       ),
@@ -784,60 +803,96 @@ class _PreviewScreenState extends State<PreviewScreen> {
         ],
       ),
       body: loading
-          ? const Center(
-              child: CircularProgressIndicator(color: _pink))
+          ? const Center(child: CircularProgressIndicator(color: _primary))
           : errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.error_outline,
-                            color: _pink, size: 48),
-                        const SizedBox(height: 16),
-                        Text(errorMessage!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                color: _textGrey)),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: () {
-                            setState(() {
-                              loading = true;
-                              errorMessage = null;
-                            });
-                            loadPreview();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _pink,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(12)),
-                          ),
-                          child: const Text('Reintentar'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
+              ? _buildError()
               : _buildWordViewer(),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                color: _primary.withOpacity(0.1),
+                shape: BoxShape.circle,
+                border: Border.all(color: _primary.withOpacity(0.3)),
+              ),
+              child: const Icon(Icons.error_outline_rounded,
+                  color: _primary, size: 32),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Error al cargar',
+              style: TextStyle(
+                color: _textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              errorMessage!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: _textSecondary,
+                fontSize: 13.5,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 44,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    loading = true;
+                    errorMessage = null;
+                  });
+                  loadPreview();
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Reintentar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AppBar button
+// Toolbar action button
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _AppBarBtn extends StatelessWidget {
+class _ToolbarBtn extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
 
-  const _AppBarBtn({
+  const _ToolbarBtn({
     required this.label,
     required this.icon,
     required this.color,
@@ -849,21 +904,32 @@ class _AppBarBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(9),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.28),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 15, color: const Color(0xFFFFFFFF)),
+            Icon(icon, size: 14, color: Colors.white),
             const SizedBox(width: 5),
-            Text(label,
-                style: const TextStyle(
-                    color: Color(0xFFFFFFFF),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.05,
+              ),
+            ),
           ],
         ),
       ),
