@@ -49,11 +49,14 @@ class _EditorScreenState extends State<EditorScreen> {
 
   SrsRealtimeService? _realtimeService;
   Timer? _debounceTimer;
+  Timer? _focusHeartbeat; // re-anuncia el campo activo cada 3s para nuevos usuarios
 
   // ── Save ──────────────────────────────────────────────────────────────────
   String _saveStatus = 'idle';
   bool _downloading = false;
   bool _saveValidationEnabled = true;
+  String? _focusedPath;  // campo actualmente enfocado (para enviar blur manual)
+  String? _focusedLabel; // label del campo enfocado (para re-anunciar al hacer join)
 
   // ── Presence ──────────────────────────────────────────────────────────────
   final Map<int, PresenceUser> _connectedUsers = {};
@@ -81,6 +84,7 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _focusHeartbeat?.cancel();
     _realtimeService?.disconnect();
     for (final c in _ctrl.values) c.dispose();
     super.dispose();
@@ -304,6 +308,9 @@ class _EditorScreenState extends State<EditorScreen> {
       },
       onSync: (payload) {
         if (!mounted) return;
+        // Cancela el debounce pendiente para que el próximo envío
+        // use el nuevo base_updated_at y no genere conflicto.
+        _debounceTimer?.cancel();
         _applyingRemote = true;
         _applyDocData(Map<String, dynamic>.from(payload.srsData));
         _applyingRemote = false;
@@ -318,21 +325,31 @@ class _EditorScreenState extends State<EditorScreen> {
       },
       onConflict: (payload) {
         if (!mounted) return;
+        // Resuelve el conflicto automáticamente: acepta la versión del
+        // servidor y actualiza la base para que el próximo envío sea válido.
+        _debounceTimer?.cancel();
+        _applyingRemote = true;
+        _applyDocData(Map<String, dynamic>.from(payload.serverSrsData));
+        _applyingRemote = false;
         setState(() {
           _syncing = false;
-          _conflictMessage =
-              payload.detail ?? 'Conflicto detectado.';
-          _lastRealtimeMessage = _conflictMessage;
+          serverUpdatedAt = payload.serverUpdatedAt;
+          _conflictMessage = null;
+          _lastRealtimeMessage = payload.updatedBy != null
+              ? 'Sincronizado con cambios de ${payload.updatedBy!.name}'
+              : 'Documento sincronizado';
         });
-        _showConflictDialog(
-          serverSrsData: payload.serverSrsData,
-          serverUpdatedAt: payload.serverUpdatedAt,
-          updatedBy: payload.updatedBy?.name,
-        );
       },
       onPresenceJoin: (user) {
         if (!mounted) return;
         setState(() => _connectedUsers[user.id] = user);
+        // Re-anuncia el campo activo al nuevo usuario para que vea quién lo ocupa
+        if (_focusedPath != null) {
+          _realtimeService?.sendFieldFocus(
+            path: _focusedPath!,
+            label: _focusedLabel ?? _focusedPath!,
+          );
+        }
       },
       onPresenceLeave: (userId) {
         if (!mounted) return;
@@ -363,7 +380,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_applyingRemote) return;
     if (_realtimeService == null || !_realtimeService!.isConnected) return;
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 700), () {
+    _debounceTimer = Timer(const Duration(milliseconds: 1200), () {
       setState(() => _syncing = true);
       _realtimeService!.sendSrsUpdate(
         srsData: _docData,
@@ -375,6 +392,14 @@ class _EditorScreenState extends State<EditorScreen> {
   // ── Save ──────────────────────────────────────────────────────────────────
 
   Future<void> saveChanges() async {
+    // Deselecciona el input y notifica al server que dejamos de editar
+    if (_focusedPath != null) {
+      _focusHeartbeat?.cancel();
+      _realtimeService?.sendFieldBlur(path: _focusedPath!);
+      _focusedPath = null;
+      _focusedLabel = null;
+    }
+    FocusScope.of(context).unfocus();
     if (_saveValidationEnabled) {
       final projectName =
           (_getPath(_docData, 'metadata.projectName') ?? '').toString().trim();
@@ -703,51 +728,69 @@ class _EditorScreenState extends State<EditorScreen> {
         (type == 'email') ? TextInputType.emailAddress : TextInputType.text;
 
     final activePresence =
-        _fieldPresenceByUser.values.where((p) => p.path == path);
+        _fieldPresenceByUser.values.where((p) => p.path == path).toList();
+    final isTakenByOther = activePresence.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         labelWidget,
-        if (activePresence.isNotEmpty) ...[
-          const SizedBox(height: 8),
+        const SizedBox(height: 10),
+        Opacity(
+          opacity: isTakenByOther ? 0.45 : 1.0,
+          child: IgnorePointer(
+            ignoring: isTakenByOther,
+            child: TextField(
+              controller: controller,
+              maxLines: maxLines,
+              keyboardType: keyboardType,
+              style: const TextStyle(color: Colors.white),
+              decoration: _dec(hint.isEmpty ? label : hint),
+              onTap: () {
+                  _focusedPath = path;
+                  _focusedLabel = label;
+                  _realtimeService?.sendFieldFocus(path: path, label: label);
+                  // Heartbeat: re-anuncia cada 3s para usuarios que entren después
+                  _focusHeartbeat?.cancel();
+                  _focusHeartbeat = Timer.periodic(
+                    const Duration(seconds: 3),
+                    (_) => _realtimeService?.sendFieldFocus(path: path, label: label),
+                  );
+              },
+              onEditingComplete: () {
+                  _focusHeartbeat?.cancel();
+                  _focusedPath = null;
+                  _focusedLabel = null;
+                  _realtimeService?.sendFieldBlur(path: path);
+              },
+            ),
+          ),
+        ),
+        if (isTakenByOther) ...[
+          const SizedBox(height: 6),
           Wrap(
             spacing: 8,
-            runSpacing: 8,
+            runSpacing: 6,
             children: activePresence
-                .map((p) => Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0x22E8365D),
-                        borderRadius: BorderRadius.circular(999),
-                        border:
-                            Border.all(color: const Color(0x55E8365D)),
-                      ),
-                      child: Text(
-                        '${p.user.name} está aquí',
-                        style: const TextStyle(
-                          color: _pink,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                .map((p) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.edit_rounded,
+                            size: 11, color: _textGrey),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${p.user.name} está modificando este campo',
+                          style: const TextStyle(
+                            color: _textGrey,
+                            fontSize: 11.5,
+                            fontStyle: FontStyle.italic,
+                          ),
                         ),
-                      ),
+                      ],
                     ))
                 .toList(),
           ),
         ],
-        const SizedBox(height: 10),
-        TextField(
-          controller: controller,
-          maxLines: maxLines,
-          keyboardType: keyboardType,
-          style: const TextStyle(color: Colors.white),
-          decoration: _dec(hint.isEmpty ? label : hint),
-          onTap: () =>
-              _realtimeService?.sendFieldFocus(path: path, label: label),
-          onEditingComplete: () =>
-              _realtimeService?.sendFieldBlur(path: path),
-        ),
       ],
     );
   }
@@ -1339,7 +1382,18 @@ class _EditorScreenState extends State<EditorScreen> {
                         ),
                       ),
                       Expanded(
-                        child: ListView(
+                        child: GestureDetector(
+                          onTap: () {
+                            if (_focusedPath != null) {
+                              _focusHeartbeat?.cancel();
+                              _realtimeService?.sendFieldBlur(path: _focusedPath!);
+                              _focusedPath = null;
+                              _focusedLabel = null;
+                            }
+                            FocusScope.of(context).unfocus();
+                          },
+                          behavior: HitTestBehavior.translucent,
+                          child: ListView(
                           padding: const EdgeInsets.fromLTRB(
                               20, 18, 20, 28),
                           children: [
@@ -1410,6 +1464,7 @@ class _EditorScreenState extends State<EditorScreen> {
                           ],
                         ),
                       ),
+                    ),
                     ],
                   ),
       ),

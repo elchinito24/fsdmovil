@@ -21,14 +21,23 @@ class PresenceUser {
     final last = (json['last_name'] ?? '').toString().trim();
     final fullName = '$first $last'.trim();
 
+    // Intenta construir nombre completo desde varios campos posibles
+    final resolvedName = fullName.isNotEmpty
+        ? fullName
+        : (json['full_name'] ?? json['name'] ?? json['username'] ?? '')
+            .toString()
+            .trim();
+
+    // Último recurso: parte local del email (antes del @)
+    final email = (json['email'] ?? '').toString();
+    final emailName = email.contains('@') ? email.split('@').first : email;
+
     return PresenceUser(
       id: json['id'] is int
           ? json['id'] as int
           : int.tryParse(json['id']?.toString() ?? '') ?? 0,
-      email: (json['email'] ?? '').toString(),
-      name: fullName.isNotEmpty
-          ? fullName
-          : (json['email'] ?? 'Usuario').toString(),
+      email: email,
+      name: resolvedName.isNotEmpty ? resolvedName : (emailName.isNotEmpty ? emailName : 'Usuario'),
     );
   }
 }

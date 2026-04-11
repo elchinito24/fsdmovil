@@ -28,7 +28,7 @@ class DashboardScreen extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
@@ -58,14 +58,20 @@ class DashboardScreen extends StatelessWidget {
         children: [
           const _SectionTitle(title: 'Accesos rápidos'),
           const SizedBox(height: 14),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            mainAxisSpacing: 14,
-            crossAxisSpacing: 14,
-            childAspectRatio: 0.78,
-            children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final cols = w >= 600 ? 3 : 2;
+              final cardW = (w - 16 * (cols - 1)) / cols;
+              final ratio = cardW / (cardW * 1.1);
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: cols,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 16,
+                childAspectRatio: ratio,
+                children: [
               _QuickAccessCard(
                 title: 'Espacios de trabajo',
                 subtitle: 'Administra entornos colaborativos',
@@ -109,6 +115,8 @@ class DashboardScreen extends StatelessWidget {
                 onTap: () => context.push('/team-meetings'),
               ),
             ],
+          );
+            },
           ),
           const SizedBox(height: 24),
           const _SectionTitle(title: 'Flujo recomendado'),
@@ -215,20 +223,20 @@ class _QuickAccessCard extends StatelessWidget {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 52,
-                height: 52,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   color: const Color(0x22E8365D),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(icon, color: fsdPink, size: 26),
+                child: Icon(icon, color: fsdPink, size: 24),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
               Text(
                 title,
                 maxLines: 2,
@@ -240,7 +248,7 @@ class _QuickAccessCard extends StatelessWidget {
                   height: 1.2,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
               Expanded(
                 child: Text(
                   subtitle,

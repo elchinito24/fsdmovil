@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
 import 'package:fsdmovil/providers/auth_provider.dart';
@@ -455,7 +456,7 @@ class _GitHubIcon extends StatelessWidget {
   const _GitHubIcon();
   @override
   Widget build(BuildContext context) {
-    return const Icon(Icons.code, color: Colors.white, size: 24);
+    return const FaIcon(FontAwesomeIcons.github, color: Colors.white, size: 22);
   }
 }
 

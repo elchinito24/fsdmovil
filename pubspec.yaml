@@ -62,6 +62,9 @@ dependencies:
   # OAuth social login (Google, GitHub, Microsoft)
   supabase_flutter: ^2.12.2
 
+  # Íconos de marcas (GitHub, etc.)
+  font_awesome_flutter: ^10.8.0
+
   #reunion en equipo
   livekit_client: ^2.5.1
 

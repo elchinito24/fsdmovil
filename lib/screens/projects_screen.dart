@@ -342,6 +342,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 padding: EdgeInsets.zero,
                 children: [
+                  const SizedBox(height: 20),
                   _ProjectsSearchAndFilter(
                     currentValue: searchQuery,
                     selectedStatus: selectedStatus,
@@ -358,7 +359,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                       });
                     },
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   if (projects.isEmpty)
                     const _EmptyProjectsState()
                   else if (visibleProjects.isEmpty)
@@ -428,61 +429,77 @@ class _ProjectsSearchAndFilter extends StatelessWidget {
     }
   }
 
+  Widget _searchField() => Container(
+        decoration: BoxDecoration(
+          color: fsdCardBg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: fsdBorderColor),
+        ),
+        child: TextField(
+          onChanged: onSearchChanged,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'Buscar proyectos...',
+            hintStyle: TextStyle(color: fsdTextGrey),
+            prefixIcon: Icon(Icons.search_rounded, color: fsdTextGrey),
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          ),
+        ),
+      );
+
+  Widget _filterDropdown() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        decoration: BoxDecoration(
+          color: fsdCardBg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: fsdBorderColor),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: selectedStatus,
+            dropdownColor: const Color(0xFF1B1E28),
+            iconEnabledColor: Colors.white,
+            isExpanded: true,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+            items: statusOptions.map((status) {
+              return DropdownMenuItem<String>(
+                value: status,
+                child: Text(_statusLabel(status)),
+              );
+            }).toList(),
+            onChanged: onStatusChanged,
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: fsdCardBg,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: fsdBorderColor),
-          ),
-          child: TextField(
-            onChanged: onSearchChanged,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              hintText: 'Buscar proyectos...',
-              hintStyle: TextStyle(color: fsdTextGrey),
-              prefixIcon: Icon(Icons.search_rounded, color: fsdTextGrey),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          decoration: BoxDecoration(
-            color: fsdCardBg,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: fsdBorderColor),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: selectedStatus,
-              dropdownColor: const Color(0xFF1B1E28),
-              iconEnabledColor: Colors.white,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-              items: statusOptions.map((status) {
-                return DropdownMenuItem<String>(
-                  value: status,
-                  child: Text(_statusLabel(status)),
-                );
-              }).toList(),
-              onChanged: onStatusChanged,
-            ),
-          ),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 480;
+        if (wide) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(flex: 3, child: _searchField()),
+              const SizedBox(width: 12),
+              Expanded(flex: 2, child: _filterDropdown()),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            _searchField(),
+            const SizedBox(height: 10),
+            _filterDropdown(),
+          ],
+        );
+      },
     );
   }
 }
