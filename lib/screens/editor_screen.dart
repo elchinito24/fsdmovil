@@ -62,8 +62,13 @@ class _EditorScreenState extends State<EditorScreen> {
   final Map<int, PresenceUser> _connectedUsers = {};
   final Map<int, FieldPresence> _fieldPresenceByUser = {};
 
-  // ── Controllers keyed by dot-path ─────────────────────────────────────────
+  // ── Draft (new items not yet committed) ───────────────────────────────────
+  final Set<String> _draftObjectPaths = {};
+  final Set<String> _draftStringPaths = {};
+
+  // ── Controllers / FocusNodes keyed by dot-path ───────────────────────────
   final Map<String, TextEditingController> _ctrl = {};
+  final Map<String, FocusNode> _focusNodes = {};
 
   List<Map<String, String>> get _sections {
     final result = <Map<String, String>>[];
@@ -87,6 +92,7 @@ class _EditorScreenState extends State<EditorScreen> {
     _focusHeartbeat?.cancel();
     _realtimeService?.disconnect();
     for (final c in _ctrl.values) c.dispose();
+    for (final n in _focusNodes.values) n.dispose();
     super.dispose();
   }
 
@@ -362,6 +368,16 @@ class _EditorScreenState extends State<EditorScreen> {
         if (!mounted) return;
         final myId = AuthService.userId;
         if (myId != null && myId == presence.user.id) return;
+
+        // Race condition: si tenemos el mismo campo activo, cedemos — el otro llegó primero
+        if (_focusedPath != null && _focusedPath == presence.path) {
+          _focusHeartbeat?.cancel();
+          _realtimeService?.sendFieldBlur(path: _focusedPath!);
+          _focusedPath = null;
+          _focusedLabel = null;
+          FocusScope.of(context).unfocus();
+        }
+
         setState(() {
           _connectedUsers[presence.user.id] = presence.user;
           _fieldPresenceByUser[presence.user.id] = presence;
@@ -723,6 +739,32 @@ class _EditorScreenState extends State<EditorScreen> {
       return c;
     });
 
+    // FocusNode: fuente de verdad para focus/blur — no depende de onTap/onEditingComplete
+    final focusNode = _focusNodes.putIfAbsent(path, () {
+      final node = FocusNode();
+      node.addListener(() {
+        if (!mounted) return;
+        if (node.hasFocus) {
+          _focusedPath = path;
+          _focusedLabel = label;
+          _realtimeService?.sendFieldFocus(path: path, label: label);
+          _focusHeartbeat?.cancel();
+          _focusHeartbeat = Timer.periodic(
+            const Duration(seconds: 3),
+            (_) => _realtimeService?.sendFieldFocus(path: path, label: label),
+          );
+        } else {
+          _focusHeartbeat?.cancel();
+          if (_focusedPath == path) {
+            _focusedPath = null;
+            _focusedLabel = null;
+          }
+          _realtimeService?.sendFieldBlur(path: path);
+        }
+      });
+      return node;
+    });
+
     final maxLines = (type == 'textarea') ? (rows > 1 ? rows : 4) : 1;
     final keyboardType =
         (type == 'email') ? TextInputType.emailAddress : TextInputType.text;
@@ -742,27 +784,11 @@ class _EditorScreenState extends State<EditorScreen> {
             ignoring: isTakenByOther,
             child: TextField(
               controller: controller,
+              focusNode: focusNode,
               maxLines: maxLines,
               keyboardType: keyboardType,
               style: const TextStyle(color: Colors.white),
               decoration: _dec(hint.isEmpty ? label : hint),
-              onTap: () {
-                  _focusedPath = path;
-                  _focusedLabel = label;
-                  _realtimeService?.sendFieldFocus(path: path, label: label);
-                  // Heartbeat: re-anuncia cada 3s para usuarios que entren después
-                  _focusHeartbeat?.cancel();
-                  _focusHeartbeat = Timer.periodic(
-                    const Duration(seconds: 3),
-                    (_) => _realtimeService?.sendFieldFocus(path: path, label: label),
-                  );
-              },
-              onEditingComplete: () {
-                  _focusHeartbeat?.cancel();
-                  _focusedPath = null;
-                  _focusedLabel = null;
-                  _realtimeService?.sendFieldBlur(path: path);
-              },
             ),
           ),
         ),
@@ -795,6 +821,45 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  // ── Confirm delete dialog ─────────────────────────────────────────────────
+
+  Future<bool> _confirmDelete(BuildContext ctx, String itemName) async {
+    return await showDialog<bool>(
+          context: ctx,
+          builder: (dCtx) => AlertDialog(
+            backgroundColor: _cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            title: const Text(
+              'Confirmar eliminación',
+              style: TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w800),
+            ),
+            content: Text(
+              '¿Seguro que deseas eliminar "$itemName"? Esta acción no se puede deshacer.',
+              style: const TextStyle(color: _textGrey, height: 1.45),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dCtx, false),
+                child: const Text('Cancelar',
+                    style: TextStyle(color: _textGrey)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dCtx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Eliminar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   // ── Object-array subsection ───────────────────────────────────────────────
 
   Widget _buildObjectArraySubsection(Map<String, dynamic> sub) {
@@ -806,6 +871,13 @@ class _EditorScreenState extends State<EditorScreen> {
     final addLabel = 'Agregar ${titleClean.toLowerCase()}';
     final items =
         List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
+    final hasDraft = _draftObjectPaths.contains(path);
+
+    Map<String, dynamic> emptyItem() {
+      final e = <String, dynamic>{};
+      for (final f in itemFields) e[f['id'] as String] = '';
+      return e;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -823,11 +895,37 @@ class _EditorScreenState extends State<EditorScreen> {
         ...List.generate(items.length, (i) {
           final item =
               Map<String, dynamic>.from(items[i] as Map? ?? {});
+          final isBusy = _fieldPresenceByUser.values
+              .any((p) => p.path.startsWith('$path.$i.'));
           return _ObjectArrayItemCard(
             key: ValueKey('$path.$i.${items.length}'),
             item: item,
             itemFields: itemFields,
             index: i,
+            pathPrefix: '$path.$i',
+            fieldPresenceByUser: _fieldPresenceByUser,
+            isDraft: false,
+            isBusy: isBusy,
+            onFocus: (presencePath, label) {
+              _focusedPath = presencePath;
+              _focusedLabel = label;
+              _realtimeService?.sendFieldFocus(
+                  path: presencePath, label: label);
+              _focusHeartbeat?.cancel();
+              _focusHeartbeat = Timer.periodic(
+                const Duration(seconds: 3),
+                (_) => _realtimeService?.sendFieldFocus(
+                    path: presencePath, label: label),
+              );
+            },
+            onBlur: (presencePath) {
+              _focusHeartbeat?.cancel();
+              if (_focusedPath == presencePath) {
+                _focusedPath = null;
+                _focusedLabel = null;
+              }
+              _realtimeService?.sendFieldBlur(path: presencePath);
+            },
             onChanged: (updated) {
               setState(() {
                 final list = List<dynamic>.from(
@@ -837,7 +935,14 @@ class _EditorScreenState extends State<EditorScreen> {
               });
               _scheduleRealtimeSync();
             },
-            onRemove: () {
+            onRemove: () async {
+              final itemTitle = item['titulo']?.toString() ??
+                  item['nombre']?.toString() ??
+                  item['name']?.toString() ??
+                  'elemento ${i + 1}';
+              final confirm =
+                  await _confirmDelete(context, itemTitle);
+              if (!confirm || !mounted) return;
               setState(() {
                 final list = List<dynamic>.from(
                     _getPath(_docData, path) as List? ?? []);
@@ -848,17 +953,38 @@ class _EditorScreenState extends State<EditorScreen> {
             },
           );
         }),
-        _buildAddButton(addLabel, () {
-          final empty = <String, dynamic>{};
-          for (final f in itemFields) empty[f['id'] as String] = '';
-          setState(() {
-            final list = List<dynamic>.from(
-                _getPath(_docData, path) as List? ?? []);
-            list.add(empty);
-            _setPath(_docData, path, list);
-          });
-          _scheduleRealtimeSync();
-        }),
+        if (hasDraft)
+          _ObjectArrayItemCard(
+            key: ValueKey('$path.draft'),
+            item: emptyItem(),
+            itemFields: itemFields,
+            index: items.length,
+            pathPrefix: '$path.${items.length}',
+            fieldPresenceByUser: <int, FieldPresence>{},
+            isDraft: true,
+            isBusy: false,
+            onFocus: (_, __) {},
+            onBlur: (_) {},
+            onChanged: (_) {},
+            onRemove: () async {},
+            onConfirm: (data) {
+              setState(() {
+                final list = List<dynamic>.from(
+                    _getPath(_docData, path) as List? ?? []);
+                list.add(data);
+                _setPath(_docData, path, list);
+                _draftObjectPaths.remove(path);
+              });
+              _scheduleRealtimeSync();
+            },
+            onCancel: () {
+              setState(() => _draftObjectPaths.remove(path));
+            },
+          ),
+        if (!hasDraft)
+          _buildAddButton(addLabel, () {
+            setState(() => _draftObjectPaths.add(path));
+          }),
       ],
     );
   }
@@ -872,6 +998,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final titleClean = title.replaceAll(RegExp(r'^[\d\.]+ ?'), '');
     final items =
         List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
+    final hasDraft = _draftStringPaths.contains(path);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -888,6 +1015,9 @@ class _EditorScreenState extends State<EditorScreen> {
         const SizedBox(height: 12),
         ...List.generate(items.length, (i) {
           final ctrlKey = '$path.__str__$i';
+          final presencePath = '$path.$i';
+          final fieldLabel = '$itemLabel ${i + 1}';
+
           final c = _ctrl.putIfAbsent(ctrlKey, () {
             final ctrl =
                 TextEditingController(text: items[i].toString());
@@ -901,73 +1031,229 @@ class _EditorScreenState extends State<EditorScreen> {
             });
             return ctrl;
           });
+
+          final focusNode = _focusNodes.putIfAbsent(ctrlKey, () {
+            final node = FocusNode();
+            node.addListener(() {
+              if (!mounted) return;
+              if (node.hasFocus) {
+                _focusedPath = presencePath;
+                _focusedLabel = fieldLabel;
+                _realtimeService?.sendFieldFocus(
+                    path: presencePath, label: fieldLabel);
+                _focusHeartbeat?.cancel();
+                _focusHeartbeat = Timer.periodic(
+                  const Duration(seconds: 3),
+                  (_) => _realtimeService?.sendFieldFocus(
+                      path: presencePath, label: fieldLabel),
+                );
+              } else {
+                _focusHeartbeat?.cancel();
+                if (_focusedPath == presencePath) {
+                  _focusedPath = null;
+                  _focusedLabel = null;
+                }
+                _realtimeService?.sendFieldBlur(path: presencePath);
+              }
+            });
+            return node;
+          });
+
+          final activePresence = _fieldPresenceByUser.values
+              .where((p) => p.path == presencePath)
+              .toList();
+          final isTakenByOther = activePresence.isNotEmpty;
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: c,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _dec('$itemLabel ${i + 1}'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () {
-                    _ctrl['$path.__str__$i']?.dispose();
-                    _ctrl.remove('$path.__str__$i');
-                    for (var j = i + 1; j < items.length; j++) {
-                      final oldKey = '$path.__str__$j';
-                      final newKey = '$path.__str__${j - 1}';
-                      final moved = _ctrl.remove(oldKey);
-                      if (moved != null) _ctrl[newKey] = moved;
-                    }
-                    setState(() {
-                      final list = List<dynamic>.from(
-                          _getPath(_docData, path) as List? ?? []);
-                      list.removeAt(i);
-                      _setPath(_docData, path, list);
-                    });
-                    _scheduleRealtimeSync();
-                  },
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _fieldBg,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _borderColor),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Opacity(
+                        opacity: isTakenByOther ? 0.45 : 1.0,
+                        child: IgnorePointer(
+                          ignoring: isTakenByOther,
+                          child: TextField(
+                            controller: c,
+                            focusNode: focusNode,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: _dec(fieldLabel),
+                          ),
+                        ),
+                      ),
                     ),
-                    child: const Icon(Icons.close_rounded,
-                        size: 16, color: _textGrey),
-                  ),
+                    const SizedBox(width: 8),
+                    if (isTakenByOther)
+                      Tooltip(
+                        message: 'Alguien está editando este elemento',
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _fieldBg,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _borderColor),
+                          ),
+                          child: const Icon(
+                            Icons.lock_outline_rounded,
+                            size: 16,
+                            color: _textGrey,
+                          ),
+                        ),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: () async {
+                          final confirm = await _confirmDelete(
+                              context, fieldLabel);
+                          if (!confirm || !mounted) return;
+                          _focusNodes['$path.__str__$i']?.dispose();
+                          _focusNodes.remove('$path.__str__$i');
+                          _ctrl['$path.__str__$i']?.dispose();
+                          _ctrl.remove('$path.__str__$i');
+                          for (var j = i + 1; j < items.length; j++) {
+                            final oldKey = '$path.__str__$j';
+                            final newKey = '$path.__str__${j - 1}';
+                            final movedCtrl = _ctrl.remove(oldKey);
+                            if (movedCtrl != null) _ctrl[newKey] = movedCtrl;
+                            final movedNode = _focusNodes.remove(oldKey);
+                            if (movedNode != null)
+                              _focusNodes[newKey] = movedNode;
+                          }
+                          setState(() {
+                            final list = List<dynamic>.from(
+                                _getPath(_docData, path) as List? ?? []);
+                            list.removeAt(i);
+                            _setPath(_docData, path, list);
+                          });
+                          _scheduleRealtimeSync();
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _fieldBg,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _borderColor),
+                          ),
+                          child: const Icon(Icons.close_rounded,
+                              size: 16, color: _textGrey),
+                        ),
+                      ),
+                  ],
                 ),
+                if (isTakenByOther) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: activePresence
+                        .map((p) => Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.edit_rounded,
+                                    size: 11, color: _textGrey),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${p.user.name} está modificando este campo',
+                                  style: const TextStyle(
+                                    color: _textGrey,
+                                    fontSize: 11.5,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ))
+                        .toList(),
+                  ),
+                ],
               ],
             ),
           );
         }),
-        _buildAddButton('Agregar ${itemLabel.toLowerCase()}', () {
-          final newIndex = items.length;
-          final newKey = '$path.__str__$newIndex';
-          final c = TextEditingController(text: '');
-          c.addListener(() {
-            if (_applyingRemote) return;
-            final list = List<dynamic>.from(
-                _getPath(_docData, path) as List? ?? []);
-            if (newIndex < list.length) list[newIndex] = c.text;
-            _setPath(_docData, path, list);
-            _scheduleRealtimeSync();
-          });
-          _ctrl[newKey] = c;
-          setState(() {
-            final list = List<dynamic>.from(
-                _getPath(_docData, path) as List? ?? []);
-            list.add('');
-            _setPath(_docData, path, list);
-          });
-          _scheduleRealtimeSync();
-        }),
+        if (hasDraft)
+          Builder(builder: (ctx) {
+            final draftKey = '$path.__draft__';
+            final draftCtrl = _ctrl.putIfAbsent(
+                draftKey, () => TextEditingController());
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: draftCtrl,
+                        autofocus: true,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: _dec('$itemLabel nuevo'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () {
+                        _ctrl['$path.__draft__']?.dispose();
+                        _ctrl.remove('$path.__draft__');
+                        setState(() => _draftStringPaths.remove(path));
+                      },
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _fieldBg,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _borderColor),
+                        ),
+                        child: const Icon(Icons.close_rounded,
+                            size: 16, color: _textGrey),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      final val =
+                          (_ctrl['$path.__draft__']?.text ?? '').trim();
+                      _ctrl['$path.__draft__']?.dispose();
+                      _ctrl.remove('$path.__draft__');
+                      setState(() {
+                        _draftStringPaths.remove(path);
+                        if (val.isNotEmpty) {
+                          final list = List<dynamic>.from(
+                              _getPath(_docData, path) as List? ?? []);
+                          list.add(val);
+                          _setPath(_docData, path, list);
+                        }
+                      });
+                      if (val.isNotEmpty) _scheduleRealtimeSync();
+                    },
+                    icon: const Icon(Icons.check_rounded, size: 16),
+                    label: const Text(
+                      'Guardar',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _pink,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          })
+        else
+          _buildAddButton('Agregar ${itemLabel.toLowerCase()}', () {
+            setState(() => _draftStringPaths.add(path));
+          }),
       ],
     );
   }
@@ -1478,16 +1764,32 @@ class _ObjectArrayItemCard extends StatefulWidget {
   final Map<String, dynamic> item;
   final List<Map<String, dynamic>> itemFields;
   final int index;
+  final String pathPrefix;
+  final Map<int, FieldPresence> fieldPresenceByUser;
+  final void Function(String path, String label) onFocus;
+  final void Function(String path) onBlur;
   final ValueChanged<Map<String, dynamic>> onChanged;
-  final VoidCallback onRemove;
+  final Future<void> Function() onRemove;
+  final bool isDraft;
+  final bool isBusy;
+  final void Function(Map<String, dynamic>)? onConfirm;
+  final VoidCallback? onCancel;
 
   const _ObjectArrayItemCard({
     super.key,
     required this.item,
     required this.itemFields,
     required this.index,
+    required this.pathPrefix,
+    required this.fieldPresenceByUser,
+    required this.onFocus,
+    required this.onBlur,
     required this.onChanged,
     required this.onRemove,
+    this.isDraft = false,
+    this.isBusy = false,
+    this.onConfirm,
+    this.onCancel,
   });
 
   @override
@@ -1496,6 +1798,7 @@ class _ObjectArrayItemCard extends StatefulWidget {
 
 class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
   final Map<String, TextEditingController> _ctrl = {};
+  final Map<String, FocusNode> _focusNodes = {};
   late Map<String, dynamic> _localData;
 
   @override
@@ -1506,6 +1809,9 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
       final fid = field['id'] as String;
       final type = field['type'] as String? ?? 'text';
       if (type == 'select') continue;
+      final presencePath = '${widget.pathPrefix}.$fid';
+      final label = field['label'] as String? ?? fid;
+
       final c = TextEditingController(
           text: _localData[fid]?.toString() ?? '');
       c.addListener(() {
@@ -1513,12 +1819,50 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
         widget.onChanged(Map<String, dynamic>.from(_localData));
       });
       _ctrl[fid] = c;
+
+      final node = FocusNode();
+      node.addListener(() {
+        if (!mounted) return;
+        if (node.hasFocus) {
+          widget.onFocus(presencePath, label);
+        } else {
+          widget.onBlur(presencePath);
+        }
+      });
+      _focusNodes[fid] = node;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ObjectArrayItemCard old) {
+    super.didUpdateWidget(old);
+    // Draft items own their local state — never overwrite from parent
+    if (widget.isDraft) return;
+    // When parent re-syncs data (e.g. remote update), refresh non-focused fields
+    if (old.item != widget.item) {
+      for (final field in widget.itemFields) {
+        final fid = field['id'] as String;
+        final type = field['type'] as String? ?? 'text';
+        if (type == 'select') {
+          _localData[fid] = widget.item[fid];
+          continue;
+        }
+        final node = _focusNodes[fid];
+        // Don't overwrite value for the field the user is currently typing in
+        if (node != null && node.hasFocus) continue;
+        final newVal = widget.item[fid]?.toString() ?? '';
+        if (_ctrl[fid]?.text != newVal) {
+          _localData[fid] = widget.item[fid];
+          _ctrl[fid]?.text = newVal;
+        }
+      }
     }
   }
 
   @override
   void dispose() {
     for (final c in _ctrl.values) c.dispose();
+    for (final n in _focusNodes.values) n.dispose();
     super.dispose();
   }
 
@@ -1554,27 +1898,56 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
       decoration: BoxDecoration(
         color: _fieldBg,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _borderColor),
+        border: Border.all(
+          color: widget.isDraft ? _pink.withOpacity(0.45) : _borderColor,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text(
-                '${widget.index + 1}',
-                style: const TextStyle(
-                  color: _textGrey,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+              if (widget.isDraft)
+                const Text(
+                  'NUEVO',
+                  style: TextStyle(
+                    color: _pink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                )
+              else
+                Text(
+                  '${widget.index + 1}',
+                  style: const TextStyle(
+                    color: _textGrey,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
               const Spacer(),
-              GestureDetector(
-                onTap: widget.onRemove,
-                child: const Icon(Icons.close_rounded,
-                    size: 18, color: _textGrey),
-              ),
+              if (widget.isDraft)
+                GestureDetector(
+                  onTap: widget.onCancel,
+                  child: const Icon(Icons.close_rounded,
+                      size: 18, color: _textGrey),
+                )
+              else if (widget.isBusy)
+                Tooltip(
+                  message: 'Alguien está editando este elemento',
+                  child: const Icon(
+                    Icons.lock_outline_rounded,
+                    size: 18,
+                    color: _textGrey,
+                  ),
+                )
+              else
+                GestureDetector(
+                  onTap: () => widget.onRemove(),
+                  child: const Icon(Icons.close_rounded,
+                      size: 18, color: _textGrey),
+                ),
             ],
           ),
           const SizedBox(height: 10),
@@ -1584,6 +1957,12 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
             final label = field['label'] as String? ?? fid;
             final hint = field['placeholder'] as String? ?? '';
             final rows = field['rows'] as int? ?? 1;
+            final presencePath = '${widget.pathPrefix}.$fid';
+
+            final activePresence = widget.fieldPresenceByUser.values
+                .where((p) => p.path == presencePath)
+                .toList();
+            final isTakenByOther = activePresence.isNotEmpty;
 
             Widget fieldWidget;
             if (type == 'select') {
@@ -1592,49 +1971,62 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
               final cur = _localData[fid]?.toString();
               final valid =
                   options.any((o) => o['value'] == cur) ? cur : null;
-              fieldWidget = Container(
-                decoration: BoxDecoration(
-                  color: _cardBg,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _borderColor),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: valid,
-                    isExpanded: true,
-                    dropdownColor: _cardBg,
-                    iconEnabledColor: _textGrey,
-                    hint: const Text('Seleccionar...',
-                        style: TextStyle(color: _textGrey)),
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 13),
-                    items: options
-                        .map((opt) => DropdownMenuItem<String>(
-                              value: opt['value'] as String,
-                              child: Text(opt['label'] as String),
-                            ))
-                        .toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() => _localData[fid] = val);
-                        widget.onChanged(
-                            Map<String, dynamic>.from(_localData));
-                      }
-                    },
+              fieldWidget = Opacity(
+                opacity: isTakenByOther ? 0.45 : 1.0,
+                child: IgnorePointer(
+                  ignoring: isTakenByOther,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: _cardBg,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _borderColor),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: valid,
+                        isExpanded: true,
+                        dropdownColor: _cardBg,
+                        iconEnabledColor: _textGrey,
+                        hint: const Text('Seleccionar...',
+                            style: TextStyle(color: _textGrey)),
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 13),
+                        items: options
+                            .map((opt) => DropdownMenuItem<String>(
+                                  value: opt['value'] as String,
+                                  child: Text(opt['label'] as String),
+                                ))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _localData[fid] = val);
+                            widget.onChanged(
+                                Map<String, dynamic>.from(_localData));
+                          }
+                        },
+                      ),
+                    ),
                   ),
                 ),
               );
             } else {
               final maxLines =
                   (type == 'textarea') ? (rows > 1 ? rows : 3) : 1;
-              fieldWidget = TextField(
-                controller: _ctrl[fid],
-                maxLines: maxLines,
-                style: const TextStyle(
-                    color: Colors.white, fontSize: 13),
-                decoration: _dec(hint.isEmpty ? label : hint),
+              fieldWidget = Opacity(
+                opacity: isTakenByOther ? 0.45 : 1.0,
+                child: IgnorePointer(
+                  ignoring: isTakenByOther,
+                  child: TextField(
+                    controller: _ctrl[fid],
+                    focusNode: _focusNodes[fid],
+                    maxLines: maxLines,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 13),
+                    decoration: _dec(hint.isEmpty ? label : hint),
+                  ),
+                ),
               );
             }
 
@@ -1653,10 +2045,58 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                   ),
                   const SizedBox(height: 6),
                   fieldWidget,
+                  if (isTakenByOther) ...[
+                    const SizedBox(height: 5),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: activePresence
+                          .map((p) => Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.edit_rounded,
+                                      size: 11, color: _textGrey),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${p.user.name} está modificando este campo',
+                                    style: const TextStyle(
+                                      color: _textGrey,
+                                      fontSize: 11.5,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                              ))
+                          .toList(),
+                    ),
+                  ],
                 ],
               ),
             );
           }),
+          // Guardar button only shown for draft items
+          if (widget.isDraft) ...[
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => widget.onConfirm
+                    ?.call(Map<String, dynamic>.from(_localData)),
+                icon: const Icon(Icons.check_rounded, size: 16),
+                label: const Text(
+                  'Guardar',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
