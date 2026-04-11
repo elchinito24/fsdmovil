@@ -1208,16 +1208,12 @@ class ApiService {
 
   // ─── Templates ───────────────────────────────────────────────────────────
 
-  static Future<Map<String, dynamic>> getDefaultTemplate() async {
+  static Future<Map<String, dynamic>?> getDefaultTemplate() async {
     try {
       final response = await _dio.get('/templates/default/');
       return Map<String, dynamic>.from(response.data);
-    } on DioException catch (e) {
-      throw Exception(
-        'Error al obtener plantilla por defecto: ${e.response?.data ?? e.message}',
-      );
-    } catch (e) {
-      throw Exception('Error al obtener plantilla por defecto: $e');
+    } catch (_) {
+      return null;
     }
   }
 

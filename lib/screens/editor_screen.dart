@@ -13,22 +13,6 @@ const _fieldBg = Color(0xFF1E2030);
 const _borderColor = Color(0xFF2A2D3A);
 const _textGrey = Color(0xFF8E8E93);
 
-class _FieldSpec {
-  final String key;
-  final String label;
-  final String hint;
-  final int maxLines;
-  final String path;
-
-  const _FieldSpec({
-    required this.key,
-    required this.label,
-    required this.hint,
-    required this.path,
-    this.maxLines = 1,
-  });
-}
-
 class EditorScreen extends StatefulWidget {
   final int projectId;
 
@@ -39,16 +23,24 @@ class EditorScreen extends StatefulWidget {
 }
 
 class _EditorScreenState extends State<EditorScreen> {
-  String selectedSection = 'portada';
+  // ── Load ──────────────────────────────────────────────────────────────────
   bool loading = true;
   bool saving = false;
   String? errorMessage;
 
+  // ── Document data ─────────────────────────────────────────────────────────
+  Map<String, dynamic> _docData = {};
   Map<String, dynamic>? fullResponse;
-  Map<String, dynamic>? srs;
   String? serverUpdatedAt;
   String? _projectCode;
 
+  // ── Template form config ──────────────────────────────────────────────────
+  List<dynamic> _formSections = [];
+
+  // ── Section navigation ────────────────────────────────────────────────────
+  String _selectedSectionId = '';
+
+  // ── Realtime ──────────────────────────────────────────────────────────────
   bool _connected = false;
   bool _syncing = false;
   bool _applyingRemote = false;
@@ -58,255 +50,131 @@ class _EditorScreenState extends State<EditorScreen> {
   SrsRealtimeService? _realtimeService;
   Timer? _debounceTimer;
 
-  String _saveStatus = 'idle'; // idle | saving | saved | error
+  // ── Save ──────────────────────────────────────────────────────────────────
+  String _saveStatus = 'idle';
   bool _downloading = false;
+  bool _saveValidationEnabled = true;
 
-  final Map<String, TextEditingController> _controllers = {};
-  final Map<String, FocusNode> _focusNodes = {};
+  // ── Presence ──────────────────────────────────────────────────────────────
   final Map<int, PresenceUser> _connectedUsers = {};
   final Map<int, FieldPresence> _fieldPresenceByUser = {};
 
-  final List<Map<String, String>> sections = const [
-    {'value': 'portada', 'label': '1. Portada'},
-    {'value': 'introduccion', 'label': '2. Introducción'},
-    {'value': 'descripcion', 'label': '3. Descripción General'},
-    {'value': 'requisitos', 'label': '4. Requisitos Específicos'},
-  ];
+  // ── Controllers keyed by dot-path ─────────────────────────────────────────
+  final Map<String, TextEditingController> _ctrl = {};
 
-  late final Map<String, List<_FieldSpec>> sectionSpecs;
+  List<Map<String, String>> get _sections {
+    final result = <Map<String, String>>[];
+    for (final s in _formSections) {
+      result.add({'value': s['id'] as String, 'label': s['title'] as String});
+    }
+    result.add({'value': '_usuarios', 'label': 'Usuarios'});
+    result.add({'value': '_configuracion', 'label': 'Configuración'});
+    return result;
+  }
 
   @override
   void initState() {
     super.initState();
-    _buildSpecs();
-    _initializeFields();
     loadSrs();
-  }
-
-  void _buildSpecs() {
-    sectionSpecs = {
-      'portada': const [
-        _FieldSpec(
-          key: 'projectName',
-          label: 'Nombre del Proyecto',
-          hint: 'Ingrese nombre del proyecto',
-          path: 'metadata.projectName',
-        ),
-        _FieldSpec(
-          key: 'version',
-          label: 'Versión',
-          hint: 'Ingrese versión',
-          path: 'metadata.version',
-        ),
-        _FieldSpec(
-          key: 'date',
-          label: 'Fecha',
-          hint: 'dd/mm/aaaa',
-          path: 'metadata.createdAt',
-        ),
-        _FieldSpec(
-          key: 'author',
-          label: 'Autor(es)',
-          hint: 'Ingrese autor(es)',
-          path: 'metadata.owner',
-        ),
-        _FieldSpec(
-          key: 'organization',
-          label: 'Organización',
-          hint: 'Ingrese organización',
-          path: 'metadata.organization',
-        ),
-      ],
-      'introduccion': const [
-        _FieldSpec(
-          key: 'purpose',
-          label: 'Propósito',
-          hint: 'Ingrese el propósito',
-          path: 'introduction.purpose',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'scope',
-          label: 'Alcance',
-          hint: 'Ingrese el alcance',
-          path: 'introduction.scope',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'overview',
-          label: 'Visión General',
-          hint: 'Ingrese la visión general',
-          path: 'introduction.overview',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'references',
-          label: 'Referencias',
-          hint: 'Una referencia por línea',
-          path: 'introduction.references',
-          maxLines: 5,
-        ),
-        _FieldSpec(
-          key: 'definitions',
-          label: 'Definiciones, Acrónimos y Abreviaturas',
-          hint: 'Formato: Término: Definición',
-          path: 'introduction.definitions',
-          maxLines: 6,
-        ),
-      ],
-      'descripcion': const [
-        _FieldSpec(
-          key: 'productPerspective',
-          label: 'Perspectiva del Producto',
-          hint: 'Ingrese la perspectiva del producto',
-          path: 'overallDescription.productPerspective',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'productFunctions',
-          label: 'Funciones del Producto',
-          hint: 'Ingrese las funciones del producto',
-          path: 'overallDescription.productFunctions',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'userClasses',
-          label: 'Clases de Usuario',
-          hint: 'Formato: id | nombre | descripción | características',
-          path: 'overallDescription.userClasses',
-          maxLines: 6,
-        ),
-        _FieldSpec(
-          key: 'operatingEnvironment',
-          label: 'Entorno Operativo',
-          hint: 'Ingrese el entorno operativo',
-          path: 'overallDescription.operatingEnvironment',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'constraints',
-          label: 'Restricciones',
-          hint: 'Ingrese restricciones',
-          path: 'overallDescription.constraints',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'assumptions',
-          label: 'Suposiciones y Dependencias',
-          hint: 'Ingrese suposiciones y dependencias',
-          path: 'overallDescription.assumptions',
-          maxLines: 4,
-        ),
-      ],
-      'requisitos': const [
-        _FieldSpec(
-          key: 'externalInterfaces',
-          label: 'Interfaces Externas',
-          hint: 'Ingrese las interfaces externas',
-          path: 'specificRequirements.externalInterfaces',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'functionalRequirements',
-          label: 'Requisitos Funcionales',
-          hint: 'Un requisito por línea',
-          path: 'specificRequirements.functionalRequirements',
-          maxLines: 6,
-        ),
-        _FieldSpec(
-          key: 'nonFunctionalRequirements',
-          label: 'Requisitos No Funcionales',
-          hint: 'Un requisito por línea',
-          path: 'specificRequirements.nonFunctionalRequirements',
-          maxLines: 6,
-        ),
-        _FieldSpec(
-          key: 'businessRules',
-          label: 'Reglas de Negocio',
-          hint: 'Una regla por línea',
-          path: 'specificRequirements.businessRules',
-          maxLines: 6,
-        ),
-        _FieldSpec(
-          key: 'useCases',
-          label: 'Casos de Uso',
-          hint: 'Un caso de uso por línea',
-          path: 'specificRequirements.useCases',
-          maxLines: 6,
-        ),
-      ],
-    };
-  }
-
-  void _initializeFields() {
-    for (final specs in sectionSpecs.values) {
-      for (final field in specs) {
-        final controller = TextEditingController();
-        final focusNode = FocusNode();
-
-        controller.addListener(() {
-          if (_applyingRemote) return;
-          _scheduleRealtimeSync();
-        });
-
-        focusNode.addListener(() {
-          if (_realtimeService == null) return;
-
-          if (focusNode.hasFocus) {
-            _realtimeService!.sendFieldFocus(
-              path: field.path,
-              label: field.label,
-            );
-          } else {
-            _realtimeService!.sendFieldBlur(path: field.path);
-          }
-        });
-
-        _controllers[field.key] = controller;
-        _focusNodes[field.key] = focusNode;
-      }
-    }
   }
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
     _realtimeService?.disconnect();
-
-    for (final controller in _controllers.values) {
-      controller.dispose();
-    }
-    for (final focusNode in _focusNodes.values) {
-      focusNode.dispose();
-    }
-
+    for (final c in _ctrl.values) c.dispose();
     super.dispose();
   }
+
+  // ── Path helpers ──────────────────────────────────────────────────────────
+
+  dynamic _getPath(Map<String, dynamic> data, String path) {
+    dynamic cur = data;
+    for (final p in path.split('.')) {
+      if (cur is Map) {
+        cur = cur[p];
+      } else {
+        return null;
+      }
+    }
+    return cur;
+  }
+
+  void _setPath(Map<String, dynamic> data, String path, dynamic value) {
+    final parts = path.split('.');
+    dynamic cur = data;
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (cur[parts[i]] == null) cur[parts[i]] = <String, dynamic>{};
+      cur = cur[parts[i]];
+    }
+    (cur as Map)[parts.last] = value;
+  }
+
+  Map<String, dynamic> _mergeDefaults(
+    Map<String, dynamic> data,
+    Map<String, dynamic> defaults,
+  ) {
+    final result = Map<String, dynamic>.from(defaults);
+    for (final key in data.keys) {
+      if (data[key] is Map && result[key] is Map) {
+        result[key] = _mergeDefaults(
+          Map<String, dynamic>.from(data[key] as Map),
+          Map<String, dynamic>.from(result[key] as Map),
+        );
+      } else if (data[key] != null) {
+        result[key] = data[key];
+      }
+    }
+    return result;
+  }
+
+  // ── Load ──────────────────────────────────────────────────────────────────
 
   Future<void> loadSrs() async {
     try {
       final results = await Future.wait([
         ApiService.getProjectSrs(widget.projectId),
         ApiService.getProject(widget.projectId),
+        ApiService.getDefaultTemplate(),
       ]);
-      final data = results[0];
-      final projectData = results[1];
-      final srsData = Map<String, dynamic>.from(data['srs_data'] ?? {});
 
-      _applySrsDataToControllers(srsData);
+      final srsResponse = results[0] as Map<String, dynamic>;
+      final projectData = results[1] as Map<String, dynamic>;
+      final template = results[2];
+
+      final formConfig =
+          Map<String, dynamic>.from(template?['form_config'] ?? {});
+      final formSections =
+          List<dynamic>.from(formConfig['sections'] ?? []);
+      final defaultData = Map<String, dynamic>.from(
+        template?['default_data'] ?? _fallbackDefaultData(),
+      );
+
+      final rawSrsData =
+          Map<String, dynamic>.from(srsResponse['srs_data'] ?? {});
+      final docData = _mergeDefaults(rawSrsData, defaultData);
+
+      final rawCode = (projectData['code'] ??
+              projectData['projectCode'] ??
+              projectData['project_code'] ??
+              srsResponse['code'] ??
+              srsResponse['projectCode'] ??
+              srsResponse['project_code'])
+          ?.toString()
+          .trim();
+
+      _initControllersForSections(docData, formSections);
 
       setState(() {
-        fullResponse = data;
-        srs = srsData;
-        final rawCode = (projectData['code'] ??
-                projectData['projectCode'] ??
-                projectData['project_code'] ??
-                data['code'] ??
-                data['projectCode'] ??
-                data['project_code'])
-            ?.toString()
-            .trim();
-        _projectCode = (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
+        _docData = docData;
+        _formSections = formSections;
+        _selectedSectionId = formSections.isNotEmpty
+            ? (formSections.first['id'] as String)
+            : '_usuarios';
+        fullResponse = srsResponse;
+        serverUpdatedAt = srsResponse['updated_at']?.toString();
+        _projectCode =
+            (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
         loading = false;
         errorMessage = null;
       });
@@ -319,6 +187,85 @@ class _EditorScreenState extends State<EditorScreen> {
       });
     }
   }
+
+  Map<String, dynamic> _fallbackDefaultData() => {
+        'metadata': {
+          'projectName': '',
+          'projectCode': '',
+          'version': '1.0',
+          'owner': '',
+          'organization': '',
+          'createdAt': '',
+          'status': 'draft',
+        },
+        'teamMembers': [],
+        'revisionHistory': [],
+        'approvalHistory': [],
+        'introduction': {
+          'purpose': '',
+          'scope': '',
+          'definitions': [],
+          'references': [],
+          'overview': '',
+        },
+        'overallDescription': {
+          'productPerspective': '',
+          'productFunctions': '',
+          'userClasses': [],
+          'operatingEnvironment': '',
+          'constraints': '',
+          'assumptions': '',
+        },
+        'requirements': {
+          'functional': [],
+          'nonFunctional': [],
+        },
+        'externalInterfaces': {
+          'user': '',
+          'hardware': '',
+          'software': '',
+          'communications': '',
+        },
+        'appendices': [],
+      };
+
+  void _initControllersForSections(
+    Map<String, dynamic> docData,
+    List<dynamic> formSections,
+  ) {
+    for (final c in _ctrl.values) c.dispose();
+    _ctrl.clear();
+    for (final section in formSections) {
+      for (final sub in (section['subsections'] as List? ?? [])) {
+        final type = sub['type'] as String?;
+        if (type == 'array') continue;
+        for (final field in (sub['fields'] as List? ?? [])) {
+          final path = field['path'] as String?;
+          final fieldType = field['type'] as String? ?? 'text';
+          if (path == null || fieldType == 'select') continue;
+          final value = _getPath(docData, path)?.toString() ?? '';
+          final c = TextEditingController(text: value);
+          final capturedPath = path;
+          c.addListener(() {
+            if (_applyingRemote) return;
+            _setPath(_docData, capturedPath, c.text);
+            _scheduleRealtimeSync();
+          });
+          _ctrl[path] = c;
+        }
+      }
+    }
+  }
+
+  void _applyDocData(Map<String, dynamic> newData) {
+    _docData = newData;
+    for (final entry in _ctrl.entries) {
+      final newVal = _getPath(newData, entry.key)?.toString() ?? '';
+      if (entry.value.text != newVal) entry.value.text = newVal;
+    }
+  }
+
+  // ── Realtime ──────────────────────────────────────────────────────────────
 
   Future<void> _connectRealtime() async {
     _realtimeService?.disconnect();
@@ -334,28 +281,23 @@ class _EditorScreenState extends State<EditorScreen> {
       },
       onClose: () {
         if (!mounted) return;
-        setState(() {
-          _connected = false;
-        });
+        setState(() => _connected = false);
       },
       onError: (message) {
         if (!mounted) return;
-        setState(() {
-          _lastRealtimeMessage = message;
-        });
+        setState(() => _lastRealtimeMessage = message);
       },
       onSessionJoined: (payload) {
         if (!mounted) return;
         _applyingRemote = true;
-        _applySrsDataToControllers(payload.srsData);
+        _applyDocData(Map<String, dynamic>.from(payload.srsData));
         _applyingRemote = false;
-
         setState(() {
-          srs = payload.srsData;
           serverUpdatedAt = payload.updatedAt;
           _connectedUsers
             ..clear()
-            ..addEntries(payload.connectedUsers.map((u) => MapEntry(u.id, u)));
+            ..addEntries(
+                payload.connectedUsers.map((u) => MapEntry(u.id, u)));
           _lastRealtimeMessage =
               'Sesión colaborativa iniciada con ${payload.connectedUsers.length} usuario(s)';
         });
@@ -363,11 +305,9 @@ class _EditorScreenState extends State<EditorScreen> {
       onSync: (payload) {
         if (!mounted) return;
         _applyingRemote = true;
-        _applySrsDataToControllers(payload.srsData);
+        _applyDocData(Map<String, dynamic>.from(payload.srsData));
         _applyingRemote = false;
-
         setState(() {
-          srs = payload.srsData;
           serverUpdatedAt = payload.updatedAt;
           _syncing = false;
           _conflictMessage = null;
@@ -381,11 +321,9 @@ class _EditorScreenState extends State<EditorScreen> {
         setState(() {
           _syncing = false;
           _conflictMessage =
-              payload.detail ??
-              'Hubo un conflicto porque el documento cambió en el servidor.';
+              payload.detail ?? 'Conflicto detectado.';
           _lastRealtimeMessage = _conflictMessage;
         });
-
         _showConflictDialog(
           serverSrsData: payload.serverSrsData,
           serverUpdatedAt: payload.serverUpdatedAt,
@@ -394,9 +332,7 @@ class _EditorScreenState extends State<EditorScreen> {
       },
       onPresenceJoin: (user) {
         if (!mounted) return;
-        setState(() {
-          _connectedUsers[user.id] = user;
-        });
+        setState(() => _connectedUsers[user.id] = user);
       },
       onPresenceLeave: (userId) {
         if (!mounted) return;
@@ -409,7 +345,6 @@ class _EditorScreenState extends State<EditorScreen> {
         if (!mounted) return;
         final myId = AuthService.userId;
         if (myId != null && myId == presence.user.id) return;
-
         setState(() {
           _connectedUsers[presence.user.id] = presence.user;
           _fieldPresenceByUser[presence.user.id] = presence;
@@ -417,274 +352,48 @@ class _EditorScreenState extends State<EditorScreen> {
       },
       onFieldBlur: (userId, path, mode) {
         if (!mounted) return;
-        setState(() {
-          _fieldPresenceByUser.remove(userId);
-        });
+        setState(() => _fieldPresenceByUser.remove(userId));
       },
     );
 
     await _realtimeService!.connect();
   }
 
-  void _applySrsDataToControllers(Map<String, dynamic> srsData) {
-    final metadata = Map<String, dynamic>.from(srsData['metadata'] ?? {});
-    final introduction = Map<String, dynamic>.from(
-      srsData['introduction'] ?? {},
-    );
-    final overallDescription = Map<String, dynamic>.from(
-      srsData['overallDescription'] ?? {},
-    );
-    final specificRequirements = Map<String, dynamic>.from(
-      srsData['specificRequirements'] ?? {},
-    );
-
-    // Keep _projectCode in sync from srs metadata (primary source after first load)
-    final codeFromMeta = metadata['projectCode']?.toString().trim();
-    if (codeFromMeta != null && codeFromMeta.isNotEmpty) {
-      _projectCode = codeFromMeta;
-    }
-
-    _setText('projectName', _safeText(metadata['projectName']));
-    _setText(
-      'version',
-      _safeText(
-        srsData['version'],
-        fallback: _safeText(fullResponse?['version'], fallback: '1.0'),
-      ),
-    );
-    _setText('date', _safeText(metadata['createdAt']));
-    _setText('author', _safeText(metadata['owner']));
-    _setText('organization', _safeText(metadata['organization']));
-
-    _setText('purpose', _safeText(introduction['purpose']));
-    _setText('scope', _safeText(introduction['scope']));
-    _setText('overview', _safeText(introduction['overview']));
-    _setText(
-      'references',
-      _listToMultiline(List.from(introduction['references'] ?? [])),
-    );
-    _setText(
-      'definitions',
-      _definitionsToText(List.from(introduction['definitions'] ?? [])),
-    );
-
-    _setText(
-      'productPerspective',
-      _safeText(overallDescription['productPerspective']),
-    );
-    _setText(
-      'productFunctions',
-      _safeText(overallDescription['productFunctions']),
-    );
-    _setText(
-      'userClasses',
-      _userClassesToText(List.from(overallDescription['userClasses'] ?? [])),
-    );
-    _setText(
-      'operatingEnvironment',
-      _safeText(overallDescription['operatingEnvironment']),
-    );
-    _setText('constraints', _safeText(overallDescription['constraints']));
-    _setText('assumptions', _safeText(overallDescription['assumptions']));
-
-    _setText(
-      'externalInterfaces',
-      _safeText(specificRequirements['externalInterfaces']),
-    );
-    _setText(
-      'functionalRequirements',
-      _listToMultiline(
-        List.from(specificRequirements['functionalRequirements'] ?? []),
-      ),
-    );
-    _setText(
-      'nonFunctionalRequirements',
-      _listToMultiline(
-        List.from(specificRequirements['nonFunctionalRequirements'] ?? []),
-      ),
-    );
-    _setText(
-      'businessRules',
-      _listToMultiline(List.from(specificRequirements['businessRules'] ?? [])),
-    );
-    _setText(
-      'useCases',
-      _listToMultiline(List.from(specificRequirements['useCases'] ?? [])),
-    );
-  }
-
-  void _setText(String key, String value) {
-    final controller = _controllers[key];
-    if (controller == null) return;
-    if (controller.text == value) return;
-    controller.text = value;
-  }
-
-  String _safeText(dynamic value, {String fallback = ''}) {
-    if (value == null) return fallback;
-    final text = value.toString().trim();
-    return text.isEmpty ? fallback : text;
-  }
-
-  String _listToMultiline(List items) {
-    if (items.isEmpty) return '';
-    return items.map((e) => e.toString()).join('\n');
-  }
-
-  List<String> _multilineToList(String value) {
-    return value
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-  }
-
-  String _definitionsToText(List items) {
-    if (items.isEmpty) return '';
-    return items
-        .map((item) {
-          final data = Map<String, dynamic>.from(item);
-          final term = _safeText(data['term']);
-          final definition = _safeText(data['definition']);
-          return '$term: $definition';
-        })
-        .join('\n');
-  }
-
-  List<Map<String, dynamic>> _textToDefinitions(String value) {
-    final lines = value
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    return lines.map((line) {
-      final parts = line.split(':');
-      if (parts.length >= 2) {
-        final term = parts.first.trim();
-        final definition = parts.sublist(1).join(':').trim();
-        return {'term': term, 'definition': definition};
-      }
-      return {'term': line, 'definition': ''};
-    }).toList();
-  }
-
-  String _userClassesToText(List items) {
-    if (items.isEmpty) return '';
-    return items
-        .map((item) {
-          final data = Map<String, dynamic>.from(item);
-          final id = _safeText(data['id']);
-          final name = _safeText(data['name']);
-          final description = _safeText(data['description']);
-          final characteristics = _safeText(data['characteristics']);
-          return '$id | $name | $description | $characteristics';
-        })
-        .join('\n');
-  }
-
-  List<Map<String, dynamic>> _textToUserClasses(String value) {
-    final lines = value
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    return lines.map((line) {
-      final parts = line.split('|').map((e) => e.trim()).toList();
-      return {
-        'id': parts.isNotEmpty ? parts[0] : '',
-        'name': parts.length > 1 ? parts[1] : '',
-        'description': parts.length > 2 ? parts[2] : '',
-        'characteristics': parts.length > 3 ? parts[3] : '',
-      };
-    }).toList();
-  }
-
-  Map<String, dynamic> _buildSrsFromControllers() {
-    return {
-      'metadata': {
-        'projectName': _controllers['projectName']!.text.trim(),
-        'version': _controllers['version']!.text.trim(),
-        'createdAt': _controllers['date']!.text.trim(),
-        'owner': _controllers['author']!.text.trim(),
-        'organization': _controllers['organization']!.text.trim(),
-        if (_projectCode != null && _projectCode!.isNotEmpty)
-          'projectCode': _projectCode,
-      },
-      'introduction': {
-        'purpose': _controllers['purpose']!.text.trim(),
-        'scope': _controllers['scope']!.text.trim(),
-        'overview': _controllers['overview']!.text.trim(),
-        'references': _multilineToList(_controllers['references']!.text.trim()),
-        'definitions': _textToDefinitions(
-          _controllers['definitions']!.text.trim(),
-        ),
-      },
-      'overallDescription': {
-        'productPerspective': _controllers['productPerspective']!.text.trim(),
-        'productFunctions': _controllers['productFunctions']!.text.trim(),
-        'userClasses': _textToUserClasses(
-          _controllers['userClasses']!.text.trim(),
-        ),
-        'operatingEnvironment': _controllers['operatingEnvironment']!.text
-            .trim(),
-        'constraints': _controllers['constraints']!.text.trim(),
-        'assumptions': _controllers['assumptions']!.text.trim(),
-      },
-      'specificRequirements': {
-        'externalInterfaces': _controllers['externalInterfaces']!.text.trim(),
-        'functionalRequirements': _multilineToList(
-          _controllers['functionalRequirements']!.text.trim(),
-        ),
-        'nonFunctionalRequirements': _multilineToList(
-          _controllers['nonFunctionalRequirements']!.text.trim(),
-        ),
-        'businessRules': _multilineToList(
-          _controllers['businessRules']!.text.trim(),
-        ),
-        'useCases': _multilineToList(_controllers['useCases']!.text.trim()),
-      },
-    };
-  }
-
   void _scheduleRealtimeSync() {
     if (_applyingRemote) return;
     if (_realtimeService == null || !_realtimeService!.isConnected) return;
-
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 700), () {
-      final updatedSrs = _buildSrsFromControllers();
-      setState(() {
-        _syncing = true;
-        srs = updatedSrs;
-      });
-
+      setState(() => _syncing = true);
       _realtimeService!.sendSrsUpdate(
-        srsData: updatedSrs,
+        srsData: _docData,
         baseUpdatedAt: serverUpdatedAt,
       );
     });
   }
 
+  // ── Save ──────────────────────────────────────────────────────────────────
+
   Future<void> saveChanges() async {
-    final projectName = _controllers['projectName']!.text.trim();
-    if (projectName.isEmpty) {
-      if (!mounted) return;
-      setState(() => _saveStatus = 'error');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('El nombre del proyecto es obligatorio'),
-          backgroundColor: _pink,
-        ),
-      );
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) setState(() => _saveStatus = 'idle');
-      });
-      return;
+    if (_saveValidationEnabled) {
+      final projectName =
+          (_getPath(_docData, 'metadata.projectName') ?? '').toString().trim();
+      if (projectName.isEmpty) {
+        if (!mounted) return;
+        setState(() => _saveStatus = 'error');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('El nombre del proyecto es obligatorio'),
+            backgroundColor: _pink,
+          ),
+        );
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _saveStatus = 'idle');
+        });
+        return;
+      }
     }
 
-    // Ensure projectCode is available before saving (server requires it)
     if (_projectCode == null || _projectCode!.trim().isEmpty) {
       try {
         final projectData = await ApiService.getProject(widget.projectId);
@@ -697,7 +406,8 @@ class _EditorScreenState extends State<EditorScreen> {
                 fullResponse?['project_code'])
             ?.toString()
             .trim();
-        _projectCode = (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
+        _projectCode =
+            (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
       } catch (_) {}
     }
 
@@ -706,7 +416,9 @@ class _EditorScreenState extends State<EditorScreen> {
       setState(() => _saveStatus = 'error');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No se pudo obtener el código del proyecto. Intente recargar.'),
+          content: Text(
+            'No se pudo obtener el código del proyecto. Intente recargar.',
+          ),
           backgroundColor: _pink,
         ),
       );
@@ -722,20 +434,15 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     try {
-      final updatedSrs = _buildSrsFromControllers();
-
       await ApiService.updateProjectSrs(widget.projectId, {
-        'srs_data': updatedSrs,
+        'srs_data': _docData,
         'projectCode': _projectCode,
       });
-
       if (!mounted) return;
       setState(() {
-        srs = updatedSrs;
         _saveStatus = 'saved';
         _lastRealtimeMessage = 'Cambios guardados manualmente';
       });
-
       Future.delayed(const Duration(milliseconds: 2500), () {
         if (mounted) setState(() => _saveStatus = 'idle');
       });
@@ -743,7 +450,10 @@ class _EditorScreenState extends State<EditorScreen> {
       if (!mounted) return;
       setState(() => _saveStatus = 'error');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al guardar: $e'), backgroundColor: _pink),
+        SnackBar(
+          content: Text('Error al guardar: $e'),
+          backgroundColor: _pink,
+        ),
       );
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) setState(() => _saveStatus = 'idle');
@@ -757,7 +467,9 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_downloading) return;
     setState(() => _downloading = true);
     try {
-      final data = fullResponse ?? {'srs_data': srs ?? {}};
+      final data = fullResponse != null
+          ? {...fullResponse!, 'srs_data': _docData}
+          : {'srs_data': _docData};
       await SrsWordService.generateAndOpen(data);
     } catch (e) {
       if (!mounted) return;
@@ -796,15 +508,13 @@ class _EditorScreenState extends State<EditorScreen> {
     } else if (_saveStatus == 'error') {
       color = _pink;
       label = 'Error';
-      iconWidget = const Icon(
-        Icons.error_outline_rounded,
-        size: 16,
-        color: _pink,
-      );
+      iconWidget =
+          const Icon(Icons.error_outline_rounded, size: 16, color: _pink);
     } else {
       color = Colors.white;
       label = 'Guardar';
-      iconWidget = const Icon(Icons.save_outlined, size: 16, color: Colors.white);
+      iconWidget =
+          const Icon(Icons.save_outlined, size: 16, color: Colors.white);
     }
 
     return TextButton.icon(
@@ -834,152 +544,678 @@ class _EditorScreenState extends State<EditorScreen> {
     final useServer =
         await showDialog<bool>(
           context: context,
-          builder: (ctx) {
-            return AlertDialog(
-              backgroundColor: _cardBg,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
-              ),
-              title: const Text(
-                'Conflicto detectado',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: _cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            title: const Text(
+              'Conflicto detectado',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+            ),
+            content: Text(
+              updatedBy == null || updatedBy.isEmpty
+                  ? 'Otro cambio llegó desde el servidor antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?'
+                  : '$updatedBy cambió el documento antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?',
+              style: const TextStyle(color: _textGrey, height: 1.45),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text(
+                  'Mantener mi vista',
+                  style: TextStyle(color: _textGrey),
                 ),
               ),
-              content: Text(
-                updatedBy == null || updatedBy.isEmpty
-                    ? 'Otro cambio llegó desde el servidor antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?'
-                    : '$updatedBy cambió el documento antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?',
-                style: const TextStyle(color: _textGrey, height: 1.45),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Cargar servidor'),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text(
-                    'Mantener mi vista',
-                    style: TextStyle(color: _textGrey),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _pink,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Cargar servidor'),
-                ),
-              ],
-            );
-          },
+            ],
+          ),
         ) ??
         false;
 
     if (!useServer) return;
 
     _applyingRemote = true;
-    _applySrsDataToControllers(serverSrsData);
+    _applyDocData(serverSrsData);
     _applyingRemote = false;
 
     setState(() {
-      srs = serverSrsData;
       this.serverUpdatedAt = serverUpdatedAt;
       _conflictMessage = null;
       _lastRealtimeMessage = 'Se cargó la versión más reciente del servidor';
     });
   }
 
-  InputDecoration inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: _textGrey),
-      filled: true,
-      fillColor: _fieldBg,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _pink, width: 1.5),
-      ),
-    );
-  }
+  // ── Decorations ───────────────────────────────────────────────────────────
 
-  Widget buildFieldLabel(String text) {
-    return Text(
-      text,
+  InputDecoration _dec(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: _textGrey),
+        filled: true,
+        fillColor: _fieldBg,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _pink, width: 1.5),
+        ),
+      );
+
+  // ── Dynamic field renderer ────────────────────────────────────────────────
+
+  Widget _buildField(Map<String, dynamic> fieldConfig) {
+    final path = (fieldConfig['path'] ?? fieldConfig['id']) as String;
+    final type = fieldConfig['type'] as String? ?? 'text';
+    final label = fieldConfig['label'] as String? ?? path;
+    final hint = fieldConfig['placeholder'] as String? ?? '';
+    final isRequired = fieldConfig['required'] as bool? ?? false;
+    final rows = fieldConfig['rows'] as int? ?? 1;
+
+    final labelWidget = Text(
+      label + (isRequired ? ' *' : ''),
       style: const TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 14,
         color: Colors.white,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
       ),
     );
-  }
 
-  Widget buildSingleField(_FieldSpec field) {
-    final controller = _controllers[field.key]!;
-    final focusNode = _focusNodes[field.key]!;
+    if (type == 'select') {
+      final options = List<Map<String, dynamic>>.from(
+          fieldConfig['options'] as List? ?? []);
+      final currentValue = _getPath(_docData, path)?.toString();
+      final validValue =
+          options.any((o) => o['value'] == currentValue) ? currentValue : null;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          labelWidget,
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _borderColor),
+            ),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: validValue,
+                isExpanded: true,
+                dropdownColor: _cardBg,
+                iconEnabledColor: _textGrey,
+                hint: Text(
+                  hint.isEmpty ? 'Seleccionar...' : hint,
+                  style: const TextStyle(color: _textGrey),
+                ),
+                style:
+                    const TextStyle(color: Colors.white, fontSize: 14),
+                items: options
+                    .map((opt) => DropdownMenuItem<String>(
+                          value: opt['value'] as String,
+                          child: Text(opt['label'] as String),
+                        ))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _setPath(_docData, path, val));
+                    _scheduleRealtimeSync();
+                  }
+                },
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
-    final activePresence = _fieldPresenceByUser.values.where(
-      (p) => p.path == field.path,
-    );
+    final controller = _ctrl.putIfAbsent(path, () {
+      final c = TextEditingController(
+          text: _getPath(_docData, path)?.toString() ?? '');
+      final capturedPath = path;
+      c.addListener(() {
+        if (_applyingRemote) return;
+        _setPath(_docData, capturedPath, c.text);
+        _scheduleRealtimeSync();
+      });
+      return c;
+    });
+
+    final maxLines = (type == 'textarea') ? (rows > 1 ? rows : 4) : 1;
+    final keyboardType =
+        (type == 'email') ? TextInputType.emailAddress : TextInputType.text;
+
+    final activePresence =
+        _fieldPresenceByUser.values.where((p) => p.path == path);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        buildFieldLabel(field.label),
-        const SizedBox(height: 10),
+        labelWidget,
         if (activePresence.isNotEmpty) ...[
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: activePresence.map((presence) {
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0x22E8365D),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: const Color(0x55E8365D)),
-                ),
-                child: Text(
-                  '${presence.user.name} está aquí',
-                  style: const TextStyle(
-                    color: _pink,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              );
-            }).toList(),
+            children: activePresence
+                .map((p) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0x22E8365D),
+                        borderRadius: BorderRadius.circular(999),
+                        border:
+                            Border.all(color: const Color(0x55E8365D)),
+                      ),
+                      child: Text(
+                        '${p.user.name} está aquí',
+                        style: const TextStyle(
+                          color: _pink,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ))
+                .toList(),
           ),
-          const SizedBox(height: 8),
         ],
+        const SizedBox(height: 10),
         TextField(
           controller: controller,
-          focusNode: focusNode,
-          maxLines: field.maxLines,
+          maxLines: maxLines,
+          keyboardType: keyboardType,
           style: const TextStyle(color: Colors.white),
-          decoration: inputDecoration(field.hint),
+          decoration: _dec(hint.isEmpty ? label : hint),
+          onTap: () =>
+              _realtimeService?.sendFieldFocus(path: path, label: label),
+          onEditingComplete: () =>
+              _realtimeService?.sendFieldBlur(path: path),
         ),
       ],
     );
   }
 
-  List<_FieldSpec> get _currentFields => sectionSpecs[selectedSection] ?? [];
+  // ── Object-array subsection ───────────────────────────────────────────────
+
+  Widget _buildObjectArraySubsection(Map<String, dynamic> sub) {
+    final title = sub['title'] as String? ?? '';
+    final path = sub['path'] as String;
+    final itemFields = List<Map<String, dynamic>>.from(
+        sub['itemFields'] as List? ?? []);
+    final titleClean = title.replaceAll(RegExp(r'^[\d\.]+ ?'), '');
+    final addLabel = 'Agregar ${titleClean.toLowerCase()}';
+    final items =
+        List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          titleClean.toUpperCase(),
+          style: const TextStyle(
+            color: _textGrey,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...List.generate(items.length, (i) {
+          final item =
+              Map<String, dynamic>.from(items[i] as Map? ?? {});
+          return _ObjectArrayItemCard(
+            key: ValueKey('$path.$i.${items.length}'),
+            item: item,
+            itemFields: itemFields,
+            index: i,
+            onChanged: (updated) {
+              setState(() {
+                final list = List<dynamic>.from(
+                    _getPath(_docData, path) as List? ?? []);
+                list[i] = updated;
+                _setPath(_docData, path, list);
+              });
+              _scheduleRealtimeSync();
+            },
+            onRemove: () {
+              setState(() {
+                final list = List<dynamic>.from(
+                    _getPath(_docData, path) as List? ?? []);
+                list.removeAt(i);
+                _setPath(_docData, path, list);
+              });
+              _scheduleRealtimeSync();
+            },
+          );
+        }),
+        _buildAddButton(addLabel, () {
+          final empty = <String, dynamic>{};
+          for (final f in itemFields) empty[f['id'] as String] = '';
+          setState(() {
+            final list = List<dynamic>.from(
+                _getPath(_docData, path) as List? ?? []);
+            list.add(empty);
+            _setPath(_docData, path, list);
+          });
+          _scheduleRealtimeSync();
+        }),
+      ],
+    );
+  }
+
+  // ── String-array subsection ───────────────────────────────────────────────
+
+  Widget _buildStringArraySubsection(Map<String, dynamic> sub) {
+    final title = sub['title'] as String? ?? '';
+    final path = sub['path'] as String;
+    final itemLabel = sub['itemLabel'] as String? ?? 'Elemento';
+    final titleClean = title.replaceAll(RegExp(r'^[\d\.]+ ?'), '');
+    final items =
+        List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          titleClean.toUpperCase(),
+          style: const TextStyle(
+            color: _textGrey,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...List.generate(items.length, (i) {
+          final ctrlKey = '$path.__str__$i';
+          final c = _ctrl.putIfAbsent(ctrlKey, () {
+            final ctrl =
+                TextEditingController(text: items[i].toString());
+            ctrl.addListener(() {
+              if (_applyingRemote) return;
+              final list = List<dynamic>.from(
+                  _getPath(_docData, path) as List? ?? []);
+              if (i < list.length) list[i] = ctrl.text;
+              _setPath(_docData, path, list);
+              _scheduleRealtimeSync();
+            });
+            return ctrl;
+          });
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: c,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: _dec('$itemLabel ${i + 1}'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () {
+                    _ctrl['$path.__str__$i']?.dispose();
+                    _ctrl.remove('$path.__str__$i');
+                    for (var j = i + 1; j < items.length; j++) {
+                      final oldKey = '$path.__str__$j';
+                      final newKey = '$path.__str__${j - 1}';
+                      final moved = _ctrl.remove(oldKey);
+                      if (moved != null) _ctrl[newKey] = moved;
+                    }
+                    setState(() {
+                      final list = List<dynamic>.from(
+                          _getPath(_docData, path) as List? ?? []);
+                      list.removeAt(i);
+                      _setPath(_docData, path, list);
+                    });
+                    _scheduleRealtimeSync();
+                  },
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: _fieldBg,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _borderColor),
+                    ),
+                    child: const Icon(Icons.close_rounded,
+                        size: 16, color: _textGrey),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+        _buildAddButton('Agregar ${itemLabel.toLowerCase()}', () {
+          final newIndex = items.length;
+          final newKey = '$path.__str__$newIndex';
+          final c = TextEditingController(text: '');
+          c.addListener(() {
+            if (_applyingRemote) return;
+            final list = List<dynamic>.from(
+                _getPath(_docData, path) as List? ?? []);
+            if (newIndex < list.length) list[newIndex] = c.text;
+            _setPath(_docData, path, list);
+            _scheduleRealtimeSync();
+          });
+          _ctrl[newKey] = c;
+          setState(() {
+            final list = List<dynamic>.from(
+                _getPath(_docData, path) as List? ?? []);
+            list.add('');
+            _setPath(_docData, path, list);
+          });
+          _scheduleRealtimeSync();
+        }),
+      ],
+    );
+  }
+
+  // ── Add button ────────────────────────────────────────────────────────────
+
+  Widget _buildAddButton(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(
+          color: const Color(0x1AE8365D),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0x55E8365D)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.add_rounded, size: 16, color: _pink),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: _pink,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Section content builder ───────────────────────────────────────────────
+
+  Widget _buildSectionContent() {
+    if (_selectedSectionId == '_usuarios') return _buildUsuariosSection();
+    if (_selectedSectionId == '_configuracion') {
+      return _buildConfiguracionSection();
+    }
+
+    final sectionConfig = _formSections.cast<Map>().firstWhere(
+          (s) => s['id'] == _selectedSectionId,
+          orElse: () => <String, dynamic>{},
+        );
+    if (sectionConfig.isEmpty) return const SizedBox();
+
+    final subsections =
+        List<dynamic>.from(sectionConfig['subsections'] as List? ?? []);
+    final widgets = <Widget>[];
+
+    for (var i = 0; i < subsections.length; i++) {
+      final sub = Map<String, dynamic>.from(subsections[i] as Map);
+      final type = sub['type'] as String?;
+
+      if (i > 0) {
+        widgets.add(const SizedBox(height: 24));
+        widgets.add(const Divider(color: _borderColor, height: 1));
+        widgets.add(const SizedBox(height: 20));
+      }
+
+      if (type == 'array') {
+        final itemType = sub['itemType'] as String?;
+        widgets.add(itemType == 'string'
+            ? _buildStringArraySubsection(sub)
+            : _buildObjectArraySubsection(sub));
+      } else {
+        final subTitle = sub['title'] as String? ?? '';
+        final fields = List<Map<String, dynamic>>.from(
+            sub['fields'] as List? ?? []);
+        widgets.add(Text(
+          subTitle.toUpperCase(),
+          style: const TextStyle(
+            color: _textGrey,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ));
+        widgets.add(const SizedBox(height: 12));
+        for (var j = 0; j < fields.length; j++) {
+          widgets.add(_buildField(fields[j]));
+          if (j < fields.length - 1) widgets.add(const SizedBox(height: 16));
+        }
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
+  }
+
+  // ── Usuarios section ──────────────────────────────────────────────────────
+
+  Widget _buildUsuariosSection() {
+    final users = _connectedUsers.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Visualiza los usuarios con acceso y su rol en este documento.',
+          style: TextStyle(color: _textGrey, height: 1.45),
+        ),
+        const SizedBox(height: 16),
+        if (users.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _borderColor),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.person_off_outlined, color: _textGrey, size: 18),
+                SizedBox(width: 10),
+                Text(
+                  'Solo tú tienes esta sesión abierta',
+                  style: TextStyle(color: _textGrey, fontSize: 13.5),
+                ),
+              ],
+            ),
+          )
+        else
+          ...users.map(
+            (user) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: _fieldBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _borderColor),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: _pink.withOpacity(0.18),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _pink.withOpacity(0.4)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          user.name.isNotEmpty
+                              ? user.name[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            color: _pink,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            user.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Activo en esta sesión',
+                            style:
+                                TextStyle(color: _textGrey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0x22E8365D),
+                        borderRadius: BorderRadius.circular(999),
+                        border:
+                            Border.all(color: const Color(0x55E8365D)),
+                      ),
+                      child: const Text(
+                        'EDITOR',
+                        style: TextStyle(
+                          color: _pink,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── Configuración section ─────────────────────────────────────────────────
+
+  Widget _buildConfiguracionSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Personaliza el comportamiento del editor para este documento.',
+          style: TextStyle(color: _textGrey, height: 1.45),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'GUARDADO',
+          style: TextStyle(
+            color: _textGrey,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _fieldBg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _borderColor),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Validación al guardar',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _saveValidationEnabled
+                          ? 'GUARDAR mostrará error si hay campos obligatorios vacíos. El autoguardado nunca valida.'
+                          : 'La validación está desactivada. Se guardará sin verificar campos.',
+                      style: const TextStyle(
+                        color: _textGrey,
+                        fontSize: 12,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Switch(
+                value: _saveValidationEnabled,
+                activeColor: _pink,
+                onChanged: (val) =>
+                    setState(() => _saveValidationEnabled = val),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final connectedUsers = _connectedUsers.values.toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final sections = _sections;
 
     return Scaffold(
       backgroundColor: _darkBg,
@@ -987,244 +1223,391 @@ class _EditorScreenState extends State<EditorScreen> {
         child: loading
             ? const Center(child: CircularProgressIndicator(color: _pink))
             : errorMessage != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    errorMessage!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              )
-            : Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                    decoration: const BoxDecoration(
-                      border: Border(bottom: BorderSide(color: _borderColor)),
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: () => context.pop(),
-                          icon: const Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            color: Colors.white,
-                          ),
+                  )
+                : Column(
+                    children: [
+                      Container(
+                        padding:
+                            const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                              bottom: BorderSide(color: _borderColor)),
                         ),
-                        const Expanded(
-                          child: Text(
-                            'Editor SRS',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 17,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        _buildSaveButton(),
-                        PopupMenuButton<String>(
-                          color: _cardBg,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            side: const BorderSide(color: _borderColor),
-                          ),
-                          icon: const Icon(
-                            Icons.more_vert_rounded,
-                            color: Colors.white,
-                          ),
-                          onSelected: (value) {
-                            if (value == 'preview') {
-                              context.push('/preview/${widget.projectId}');
-                            } else if (value == 'download') {
-                              _downloadDocx();
-                            }
-                          },
-                          itemBuilder: (_) => [
-                            const PopupMenuItem(
-                              value: 'preview',
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.visibility_outlined,
-                                    color: Colors.white,
-                                    size: 18,
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'Vista previa',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ],
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => context.pop(),
+                              icon: const Icon(
+                                Icons.arrow_back_ios_new_rounded,
+                                color: Colors.white,
                               ),
                             ),
-                            PopupMenuItem(
-                              value: 'download',
-                              enabled: !_downloading,
-                              child: Row(
-                                children: [
-                                  _downloading
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: _pink,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.download_outlined,
-                                          color: Colors.white,
-                                          size: 18,
-                                        ),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    _downloading ? 'Generando...' : 'Descargar DOCX',
-                                    style: const TextStyle(color: Colors.white),
-                                  ),
-                                ],
+                            const Expanded(
+                              child: Text(
+                                'Editor SRS',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 17,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
+                            ),
+                            _buildSaveButton(),
+                            PopupMenuButton<String>(
+                              color: _cardBg,
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(14),
+                                side: const BorderSide(
+                                    color: _borderColor),
+                              ),
+                              icon: const Icon(
+                                Icons.more_vert_rounded,
+                                color: Colors.white,
+                              ),
+                              onSelected: (value) {
+                                if (value == 'preview') {
+                                  context.push(
+                                      '/preview/${widget.projectId}');
+                                } else if (value == 'download') {
+                                  _downloadDocx();
+                                }
+                              },
+                              itemBuilder: (_) => [
+                                const PopupMenuItem(
+                                  value: 'preview',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.visibility_outlined,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        'Vista previa',
+                                        style: TextStyle(
+                                            color: Colors.white),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'download',
+                                  enabled: !_downloading,
+                                  child: Row(
+                                    children: [
+                                      _downloading
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child:
+                                                  CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: _pink,
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.download_outlined,
+                                              color: Colors.white,
+                                              size: 18,
+                                            ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        _downloading
+                                            ? 'Generando...'
+                                            : 'Descargar DOCX',
+                                        style: const TextStyle(
+                                            color: Colors.white),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-                      children: [
-                        _RealtimeStatusCard(
-                          connected: _connected,
-                          syncing: _syncing,
-                          lastMessage: _lastRealtimeMessage,
-                          conflictMessage: _conflictMessage,
-                          connectedUsers: connectedUsers,
-                          onReconnect: _connectRealtime,
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 50,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: sections.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(width: 10),
-                            itemBuilder: (context, index) {
-                              final section = sections[index];
-                              final isSelected =
-                                  selectedSection == section['value'];
-
-                              return InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () {
-                                  setState(() {
-                                    selectedSection = section['value']!;
-                                  });
-                                },
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 220),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
+                      ),
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(
+                              20, 18, 20, 28),
+                          children: [
+                            _RealtimeStatusCard(
+                              connected: _connected,
+                              syncing: _syncing,
+                              lastMessage: _lastRealtimeMessage,
+                              conflictMessage: _conflictMessage,
+                              connectedUsers: connectedUsers,
+                              onReconnect: _connectRealtime,
+                            ),
+                            const SizedBox(height: 16),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: _cardBg,
+                                borderRadius:
+                                    BorderRadius.circular(14),
+                                border:
+                                    Border.all(color: _borderColor),
+                              ),
+                              padding:
+                                  const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 4),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedSectionId
+                                          .isNotEmpty
+                                      ? _selectedSectionId
+                                      : null,
+                                  isExpanded: true,
+                                  dropdownColor: _cardBg,
+                                  iconEnabledColor: _textGrey,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? const Color(0x33E8365D)
-                                        : _cardBg,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: isSelected ? _pink : _borderColor,
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      section['label']!,
-                                      style: TextStyle(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : _textGrey,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        Container(
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                            color: _cardBg,
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: _borderColor),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _sectionTitle(selectedSection),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
+                                  items: sections
+                                      .map((s) =>
+                                          DropdownMenuItem<String>(
+                                            value: s['value'],
+                                            child:
+                                                Text(s['label']!),
+                                          ))
+                                      .toList(),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      setState(() =>
+                                          _selectedSectionId =
+                                              val);
+                                    }
+                                  },
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'Los cambios se sincronizan automáticamente cuando estás conectado.',
-                                style: TextStyle(
-                                  color: _textGrey,
-                                  height: 1.45,
-                                ),
+                            ),
+                            const SizedBox(height: 18),
+                            Container(
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                color: _cardBg,
+                                borderRadius:
+                                    BorderRadius.circular(22),
+                                border:
+                                    Border.all(color: _borderColor),
                               ),
-                              const SizedBox(height: 18),
-                              ..._buildCurrentSectionFields(),
-                            ],
-                          ),
+                              child: _buildSectionContent(),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
       ),
     );
   }
+}
 
-  String _sectionTitle(String sectionValue) {
-    switch (sectionValue) {
-      case 'portada':
-        return 'Portada';
-      case 'introduccion':
-        return 'Introducción';
-      case 'descripcion':
-        return 'Descripción General';
-      case 'requisitos':
-        return 'Requisitos Específicos';
-      default:
-        return 'Sección';
+// ── Object array item card ────────────────────────────────────────────────────
+
+class _ObjectArrayItemCard extends StatefulWidget {
+  final Map<String, dynamic> item;
+  final List<Map<String, dynamic>> itemFields;
+  final int index;
+  final ValueChanged<Map<String, dynamic>> onChanged;
+  final VoidCallback onRemove;
+
+  const _ObjectArrayItemCard({
+    super.key,
+    required this.item,
+    required this.itemFields,
+    required this.index,
+    required this.onChanged,
+    required this.onRemove,
+  });
+
+  @override
+  State<_ObjectArrayItemCard> createState() => _ObjectArrayItemCardState();
+}
+
+class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
+  final Map<String, TextEditingController> _ctrl = {};
+  late Map<String, dynamic> _localData;
+
+  @override
+  void initState() {
+    super.initState();
+    _localData = Map<String, dynamic>.from(widget.item);
+    for (final field in widget.itemFields) {
+      final fid = field['id'] as String;
+      final type = field['type'] as String? ?? 'text';
+      if (type == 'select') continue;
+      final c = TextEditingController(
+          text: _localData[fid]?.toString() ?? '');
+      c.addListener(() {
+        _localData[fid] = c.text;
+        widget.onChanged(Map<String, dynamic>.from(_localData));
+      });
+      _ctrl[fid] = c;
     }
   }
 
-  List<Widget> _buildCurrentSectionFields() {
-    final widgets = <Widget>[];
-    final fields = _currentFields;
+  @override
+  void dispose() {
+    for (final c in _ctrl.values) c.dispose();
+    super.dispose();
+  }
 
-    for (var i = 0; i < fields.length; i++) {
-      widgets.add(buildSingleField(fields[i]));
-      if (i != fields.length - 1) {
-        widgets.add(const SizedBox(height: 18));
-      }
-    }
+  InputDecoration _dec(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle:
+            const TextStyle(color: _textGrey, fontSize: 13),
+        filled: true,
+        fillColor: _cardBg,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide:
+              const BorderSide(color: _pink, width: 1.5),
+        ),
+      );
 
-    return widgets;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _fieldBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '${widget.index + 1}',
+                style: const TextStyle(
+                  color: _textGrey,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: widget.onRemove,
+                child: const Icon(Icons.close_rounded,
+                    size: 18, color: _textGrey),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...widget.itemFields.map((field) {
+            final fid = field['id'] as String;
+            final type = field['type'] as String? ?? 'text';
+            final label = field['label'] as String? ?? fid;
+            final hint = field['placeholder'] as String? ?? '';
+            final rows = field['rows'] as int? ?? 1;
+
+            Widget fieldWidget;
+            if (type == 'select') {
+              final options = List<Map<String, dynamic>>.from(
+                  field['options'] as List? ?? []);
+              final cur = _localData[fid]?.toString();
+              final valid =
+                  options.any((o) => o['value'] == cur) ? cur : null;
+              fieldWidget = Container(
+                decoration: BoxDecoration(
+                  color: _cardBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _borderColor),
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: valid,
+                    isExpanded: true,
+                    dropdownColor: _cardBg,
+                    iconEnabledColor: _textGrey,
+                    hint: const Text('Seleccionar...',
+                        style: TextStyle(color: _textGrey)),
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 13),
+                    items: options
+                        .map((opt) => DropdownMenuItem<String>(
+                              value: opt['value'] as String,
+                              child: Text(opt['label'] as String),
+                            ))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _localData[fid] = val);
+                        widget.onChanged(
+                            Map<String, dynamic>.from(_localData));
+                      }
+                    },
+                  ),
+                ),
+              );
+            } else {
+              final maxLines =
+                  (type == 'textarea') ? (rows > 1 ? rows : 3) : 1;
+              fieldWidget = TextField(
+                controller: _ctrl[fid],
+                maxLines: maxLines,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13),
+                decoration: _dec(hint.isEmpty ? label : hint),
+              );
+            }
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: _textGrey,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  fieldWidget,
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
   }
 }
+
 
 class _RealtimeStatusCard extends StatelessWidget {
   final bool connected;

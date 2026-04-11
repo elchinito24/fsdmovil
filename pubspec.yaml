@@ -49,6 +49,10 @@ dependencies:
   # Generación de documentos Word
   docs_gee: ^1.2.2
 
+  # Generación de PDF con estilo completo
+  pdf: ^3.11.0
+  printing: ^5.13.0
+
   # Almacenamiento local (token JWT)
   shared_preferences: ^2.5.3
 

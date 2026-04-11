@@ -1,3 +1,4 @@
+content = """\
 import 'dart:io';
 
 import 'package:docs_gee/docs_gee.dart';
@@ -33,60 +34,11 @@ class SrsWordService {
     return labels[c.trim().toLowerCase()] ?? c;
   }
 
-  // ── public entry points ────────────────────────────────────────────────────
+  // ── public entry point ─────────────────────────────────────────────────────
   static Future<String?> generateAndOpen(
     Map<String, dynamic> responseData,
   ) async {
     try {
-      final doc  = _buildDoc(responseData);
-      final name = _safeName(responseData);
-      final bytes = DocxGenerator().generate(doc);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/SRS_$name.docx');
-      await file.writeAsBytes(bytes, flush: true);
-      final result = await OpenFilex.open(file.path);
-      if (result.type != ResultType.done) {
-        return 'No se encontró una app para abrir .docx: ${result.message}';
-      }
-      return null;
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  static Future<String?> generatePdfAndOpen(
-    Map<String, dynamic> responseData,
-  ) async {
-    try {
-      final doc  = _buildDoc(responseData);
-      final name = _safeName(responseData);
-      final bytes = PdfGenerator().generate(doc);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/SRS_$name.pdf');
-      await file.writeAsBytes(bytes, flush: true);
-      final result = await OpenFilex.open(file.path);
-      if (result.type != ResultType.done) {
-        return 'No se encontró una app para abrir .pdf: ${result.message}';
-      }
-      return null;
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // ── shared document builder ────────────────────────────────────────────────
-  static String _safeName(Map<String, dynamic> responseData) {
-    final srs  = Map<String, dynamic>.from(responseData['srs_data'] ?? {});
-    final meta = Map<String, dynamic>.from(srs['metadata'] ?? {});
-    final name = _safe(meta['projectName']);
-    return name
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .trim()
-        .replaceAll(RegExp(r'\s+'), '_');
-  }
-
-  static Document _buildDoc(Map<String, dynamic> responseData) {
-    {
       final srs              = Map<String, dynamic>.from(responseData['srs_data']        ?? {});
       final meta             = Map<String, dynamic>.from(srs['metadata']                 ?? {});
       final intro            = Map<String, dynamic>.from(srs['introduction']             ?? {});
@@ -98,7 +50,7 @@ class SrsWordService {
       final revisionHistory  = List.from(srs['revisionHistory'] ?? []);
       final approvalHistory  = List.from(srs['approvalHistory'] ?? []);
       final functionalReqs   = List.from(requirements['functional']    ?? []);
-      final nonFunctionalReqs = List.from(requirements['nonFunctional'] ?? []);
+      final nonFunctionalReqs= List.from(requirements['nonFunctional'] ?? []);
       final defs             = List.from(intro['definitions'] ?? []);
       final refs             = List.from(intro['references']  ?? []);
       final userClasses      = List.from(overall['userClasses'] ?? []);
@@ -125,11 +77,13 @@ class SrsWordService {
         runs: [TextRun('DOCUMENTO TÉCNICO', bold: true, color: '94A3B8')],
         alignment: Alignment.center,
       ));
-      doc.addParagraph(Paragraph.heading(projectName, level: 1,
-          alignment: Alignment.center));
+      doc.addParagraph(Paragraph(
+        runs: [TextRun(projectName, bold: true, fontSize: 32, color: '1A202C')],
+        alignment: Alignment.center,
+      ));
       doc.addParagraph(Paragraph(
         runs: [TextRun('Especificación de Requisitos de Software',
-            color: '64748B', italic: true)],
+            color: '94A3B8', italic: true)],
         alignment: Alignment.center,
       ));
       doc.addParagraph(Paragraph.text(''));
@@ -354,9 +308,8 @@ class SrsWordService {
         for (int i = 0; i < appendices.length; i++) {
           final a = Map<String, dynamic>.from(appendices[i]);
           final letter = String.fromCharCode(65 + i);
-          final title = _safe(a['title'], fallback: 'Apéndice ${i + 1}');
           doc.addParagraph(Paragraph.heading(
-            '$letter. $title',
+            '$letter. ${_safe(a[\\'title\\'], fallback: \\'Apéndice ${i + 1}\\')}',
             level: 2,
           ));
           doc.addParagraph(Paragraph.text(_safe(a['content'])));
@@ -367,12 +320,28 @@ class SrsWordService {
       doc.addParagraph(Paragraph.text(''));
       doc.addParagraph(Paragraph(
         runs: [
-          TextRun('Documento generado por FSD  ·  v$version', color: '94A3B8'),
+          TextRun('Documento generado por FSD  ·  v$version', color: '94A3B8')
         ],
         alignment: Alignment.center,
       ));
 
-      return doc;
+      // ── Save & open ──────────────────────────────────────────────────────
+      final bytes = DocxGenerator().generate(doc);
+      final dir = await getTemporaryDirectory();
+      final safeName = projectName
+          .replaceAll(RegExp(r'[^\\w\\s]'), '')
+          .trim()
+          .replaceAll(RegExp(r'\\s+'), '_');
+      final file = File('\${dir.path}/SRS_\$safeName.docx');
+      await file.writeAsBytes(bytes, flush: true);
+
+      final result = await OpenFilex.open(file.path);
+      if (result.type != ResultType.done) {
+        return 'No se encontró una app para abrir .docx: \${result.message}';
+      }
+      return null;
+    } catch (e) {
+      return e.toString();
     }
   }
 
@@ -398,7 +367,7 @@ class SrsWordService {
       final m = Map<String, dynamic>.from(d);
       doc.addParagraph(Paragraph(
         runs: [
-          TextRun('${_safe(m["term"], fallback: "")}: ', bold: true),
+          TextRun('\${_safe(m[\\'term\\'], fallback: \\'\\')}:  ', bold: true),
           TextRun(_safe(m['definition'], fallback: '')),
         ],
       ));
@@ -434,3 +403,13 @@ class SrsWordService {
     }
   }
 }
+"""
+
+with open(
+    r"C:\Users\PC PRIDE WHITE WOLF\Desktop\fsdmovil\lib\services\srs_word_service.dart",
+    "w",
+    encoding="utf-8",
+) as f:
+    f.write(content)
+
+print("written ok")
