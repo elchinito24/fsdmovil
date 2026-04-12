@@ -141,7 +141,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return null;
     } catch (e) {
       state = state.copyWith(isAuthenticated: false, isLoading: false);
-      return e.toString().replaceFirst('Exception: ', '');
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      // If user simply cancelled (returned from browser), don't show an error
+      if (msg.contains('cancelado') || msg.contains('cancelled')) return null;
+      return msg;
     }
   }
 

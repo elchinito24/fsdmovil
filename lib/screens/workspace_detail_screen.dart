@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
 import 'package:fsdmovil/services/auth_service.dart';
+import 'package:fsdmovil/widgets/main_app_shell.dart';
+import 'package:fsdmovil/widgets/top_nav_menu.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF0F1017);
@@ -173,14 +175,14 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
             return AlertDialog(
-              backgroundColor: _cardBg,
+              backgroundColor: Theme.of(ctx).colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(22),
               ),
-              title: const Text(
+              title: Text(
                 'Invitar miembro',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Theme.of(ctx).colorScheme.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -198,10 +200,10 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
                         hintText: 'correo@ejemplo.com',
                         hintStyle: const TextStyle(color: _textGrey),
                         filled: true,
-                        fillColor: const Color(0xFF151823),
+                        fillColor: Theme.of(ctx).colorScheme.surfaceContainerHighest,
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: _borderColor),
+                          borderSide: BorderSide(color: Theme.of(ctx).colorScheme.outlineVariant),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
@@ -213,14 +215,14 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF151823),
+                        color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: _borderColor),
+                        border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: selectedRole,
-                          dropdownColor: const Color(0xFF1B1E28),
+                          dropdownColor: Theme.of(ctx).colorScheme.surface,
                           style: const TextStyle(color: Colors.white),
                           isExpanded: true,
                           items: const [
@@ -371,28 +373,28 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
             return AlertDialog(
-              backgroundColor: _cardBg,
+              backgroundColor: Theme.of(ctx).colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(22),
               ),
-              title: const Text(
+              title: Text(
                 'Cambiar rol',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Theme.of(ctx).colorScheme.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
               content: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF151823),
+                  color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: _borderColor),
+                  border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant),
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: selectedRole,
-                    dropdownColor: const Color(0xFF1B1E28),
+                    dropdownColor: Theme.of(ctx).colorScheme.surface,
                     style: const TextStyle(color: Colors.white),
                     isExpanded: true,
                     items: const [
@@ -474,14 +476,14 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
         await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            backgroundColor: _cardBg,
+            backgroundColor: Theme.of(ctx).colorScheme.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
             ),
-            title: const Text(
+            title: Text(
               'Eliminar miembro',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(ctx).colorScheme.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -550,14 +552,14 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
         await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            backgroundColor: _cardBg,
+            backgroundColor: Theme.of(ctx).colorScheme.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
             ),
-            title: const Text(
+            title: Text(
               'Cancelar invitación',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(ctx).colorScheme.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -657,15 +659,20 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final workspaceName = workspace?['name']?.toString() ?? 'Workspace';
-    final description =
-        workspace?['description']?.toString() ?? 'Sin descripción';
+    final workspaceName = loading ? 'Cargando...' : (workspace?['name']?.toString() ?? 'Workspace');
+    final wsDescription = loading ? '' : (workspace?['description']?.toString() ?? 'Sin descripción');
     final memberCount = members.length.toString();
     final projectCount = workspace?['project_count']?.toString() ?? '0';
 
-    return Scaffold(
-      backgroundColor: _darkBg,
-      floatingActionButton: projects.isEmpty
+    return MainAppShell(
+      selectedItem: TopNavItem.workspaces,
+      eyebrow: 'Espacio de trabajo',
+      titleWhite: '',
+      titlePink: workspaceName,
+      description: wsDescription,
+      useBodyPadding: true,
+      onRefresh: loading ? null : loadData,
+      floatingActionButton: (!loading && projects.isEmpty)
           ? FloatingActionButton.extended(
               backgroundColor: _pink,
               foregroundColor: Colors.white,
@@ -677,374 +684,340 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
               ),
             )
           : null,
-      body: SafeArea(
-        child: loading
-            ? const Center(child: CircularProgressIndicator(color: _pink))
-            : errorMessage != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Text(
-                    errorMessage!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
-                  ),
+      child: loading
+          ? const Padding(
+              padding: EdgeInsets.only(top: 40),
+              child: Center(child: CircularProgressIndicator(color: _pink)),
+            )
+          : errorMessage != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 ),
-              )
-            : RefreshIndicator(
-                color: _pink,
-                onRefresh: loadData,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (canInviteMembers) ...[
+                  SizedBox(
+                    width: 190,
+                    child: OutlinedButton(
+                      onPressed: _showInviteMemberDialog,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.onSurface,
+                        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        'Invitar miembro',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                ],
+                Row(
                   children: [
-                    GestureDetector(
-                      onTap: () => context.pop(),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.arrow_back_ios_new,
-                            color: _textGrey,
-                            size: 16,
-                          ),
-                          SizedBox(width: 6),
-                          Text(
-                            'Volver a espacios de trabajo',
-                            style: TextStyle(color: _textGrey, fontSize: 15),
-                          ),
-                        ],
+                    Expanded(
+                      child: _InfoCard(
+                        title: 'Miembros',
+                        value: memberCount,
+                        subtitle: 'Ver lista de miembros',
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    Text(
-                      workspaceName,
-                      style: const TextStyle(
-                        color: _pink,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _InfoCard(
+                        title: 'Proyectos',
+                        value: projectCount,
+                        subtitle: 'Dentro del workspace',
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      description,
-                      style: const TextStyle(color: _textGrey, fontSize: 16),
-                    ),
-                    const SizedBox(height: 24),
-                    if (canInviteMembers)
-                      SizedBox(
-                        width: 190,
-                        child: OutlinedButton(
-                          onPressed: _showInviteMemberDialog,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            side: const BorderSide(color: _borderColor),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
+                  ],
+                ),
+                const SizedBox(height: 26),
+                _SectionHeader(
+                  title: 'Miembros',
+                  trailing: membersLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            color: _pink,
+                            strokeWidth: 2,
                           ),
-                          child: const Text(
-                            'Invitar miembro',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ),
-                    if (canInviteMembers) const SizedBox(height: 22),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _InfoCard(
-                            title: 'Miembros',
-                            value: memberCount,
-                            subtitle: 'Ver lista de miembros',
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: _InfoCard(
-                            title: 'Proyectos',
-                            value: projectCount,
-                            subtitle: 'Dentro del workspace',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 26),
-                    _SectionHeader(
-                      title: 'Miembros',
-                      trailing: membersLoading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                color: _pink,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : null,
-                    ),
-                    const SizedBox(height: 14),
-                    if (members.isEmpty)
-                      const _EmptyStateCard(
-                        icon: Icons.people_outline_rounded,
-                        title: 'No hay miembros',
-                        subtitle:
-                            'Aquí aparecerán los usuarios que formen parte de este workspace.',
-                      )
-                    else
-                      ...members.map((member) {
-                        final user =
-                            member['user'] as Map<String, dynamic>? ?? {};
-                        final role = (member['role'] ?? 'viewer').toString();
-                        final memberEmail = (user['email'] ?? '')
-                            .toString()
-                            .trim()
-                            .toLowerCase();
-                        final isCurrentUser = memberEmail == currentUserEmail;
-                        final isOwnerMember = role.toLowerCase() == 'owner';
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _MemberCard(
-                            name: _buildUserName(user),
-                            email: (user['email'] ?? '').toString(),
-                            roleLabel: _roleLabel(role),
-                            roleColor: _roleColor(role),
-                            isCurrentUser: isCurrentUser,
-                            canManage: canManageMembers && !isOwnerMember,
-                            onEditRole: () => _showUpdateRoleDialog(member),
-                            onRemove: () => _removeMember(member),
-                          ),
-                        );
-                      }),
-                    if (canInviteMembers) ...[
-                      const SizedBox(height: 26),
-                      _SectionHeader(
-                        title: 'Invitaciones pendientes',
-                        trailing: invitationsLoading
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  color: _pink,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(height: 14),
-                      if (invitations.isEmpty)
-                        const _EmptyStateCard(
-                          icon: Icons.mail_outline_rounded,
-                          title: 'No hay invitaciones pendientes',
-                          subtitle:
-                              'Cuando invites personas al workspace, aquí aparecerán mientras no acepten o rechacen.',
                         )
-                      else
-                        ...invitations.map((invitation) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _InvitationCard(
-                              email: (invitation['email'] ?? '').toString(),
-                              roleLabel: _roleLabel(
-                                (invitation['role'] ?? '').toString(),
-                              ),
-                              invitedBy: (invitation['invited_by_name'] ?? '')
-                                  .toString(),
-                              inviteeExists:
-                                  invitation['invitee_exists'] == true,
-                              onCancel: () => _cancelInvitation(invitation),
+                      : null,
+                ),
+                const SizedBox(height: 14),
+                if (members.isEmpty)
+                  const _EmptyStateCard(
+                    icon: Icons.people_outline_rounded,
+                    title: 'No hay miembros',
+                    subtitle:
+                        'Aquí aparecerán los usuarios que formen parte de este workspace.',
+                  )
+                else
+                  ...members.map((member) {
+                    final user =
+                        member['user'] as Map<String, dynamic>? ?? {};
+                    final role = (member['role'] ?? 'viewer').toString();
+                    final memberEmail = (user['email'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
+                    final isCurrentUser = memberEmail == currentUserEmail;
+                    final isOwnerMember = role.toLowerCase() == 'owner';
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _MemberCard(
+                        name: _buildUserName(user),
+                        email: (user['email'] ?? '').toString(),
+                        roleLabel: _roleLabel(role),
+                        roleColor: _roleColor(role),
+                        isCurrentUser: isCurrentUser,
+                        canManage: canManageMembers && !isOwnerMember,
+                        onEditRole: () => _showUpdateRoleDialog(member),
+                        onRemove: () => _removeMember(member),
+                      ),
+                    );
+                  }),
+                if (canInviteMembers) ...[
+                  const SizedBox(height: 26),
+                  _SectionHeader(
+                    title: 'Invitaciones pendientes',
+                    trailing: invitationsLoading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: _pink,
+                              strokeWidth: 2,
                             ),
-                          );
-                        }),
-                    ],
-                    const SizedBox(height: 26),
-                    Row(
+                          )
+                        : null,
+                  ),
+                  const SizedBox(height: 14),
+                  if (invitations.isEmpty)
+                    const _EmptyStateCard(
+                      icon: Icons.mail_outline_rounded,
+                      title: 'No hay invitaciones pendientes',
+                      subtitle:
+                          'Cuando invites personas al workspace, aquí aparecerán mientras no acepten o rechacen.',
+                    )
+                  else
+                    ...invitations.map((invitation) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _InvitationCard(
+                          email: (invitation['email'] ?? '').toString(),
+                          roleLabel: _roleLabel(
+                            (invitation['role'] ?? '').toString(),
+                          ),
+                          invitedBy: (invitation['invited_by_name'] ?? '')
+                              .toString(),
+                          inviteeExists:
+                              invitation['invitee_exists'] == true,
+                          onCancel: () => _cancelInvitation(invitation),
+                        ),
+                      );
+                    }),
+                ],
+                const SizedBox(height: 26),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Proyectos',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => context.push('/create-project'),
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Nuevo Proyecto'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _pink,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (projects.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                    ),
+                    child: Column(
                       children: [
-                        const Expanded(
-                          child: Text(
-                            'Proyectos',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                            ),
+                        const Icon(
+                          Icons.description_outlined,
+                          color: _pink,
+                          size: 34,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No hay proyectos aún',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        ElevatedButton.icon(
-                          onPressed: () => context.push('/create-project'),
-                          icon: const Icon(Icons.add_rounded),
-                          label: const Text('Nuevo Proyecto'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _pink,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Crea el primer proyecto de este espacio de trabajo.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: _textGrey, fontSize: 14),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    if (projects.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(24),
+                  )
+                else
+                  ...projects.map((project) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Container(
                         decoration: BoxDecoration(
-                          color: _cardBg,
                           borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: _borderColor),
+                          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                         ),
-                        child: const Column(
-                          children: [
-                            Icon(
-                              Icons.description_outlined,
-                              color: _pink,
-                              size: 34,
-                            ),
-                            SizedBox(height: 12),
-                            Text(
-                              'No hay proyectos aún',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(21),
+                          child: Dismissible(
+                            key: ValueKey(project['id']),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 28),
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? const Color(0xFF2A0A10)
+                                  : const Color(0xFFFFEBEE),
+                              child: const Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: _pink,
+                                    size: 28,
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Eliminar',
+                                    style: TextStyle(
+                                      color: _pink,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Crea el primer proyecto de este espacio de trabajo.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: _textGrey, fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      ...projects.map((project) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(22),
-                              border: Border.all(color: _borderColor),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(21),
-                              child: Dismissible(
-                                key: ValueKey(project['id']),
-                                direction: DismissDirection.endToStart,
-                                background: Container(
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: 28),
-                                  color: const Color(0xFF2A0A10),
-                                  child: const Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.delete_outline_rounded,
-                                        color: _pink,
-                                        size: 28,
+                            confirmDismiss: (_) async {
+                              return await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      backgroundColor: Theme.of(ctx).colorScheme.surface,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
                                       ),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        'Eliminar',
+                                      title: Text(
+                                        'Eliminar proyecto',
                                         style: TextStyle(
-                                          color: _pink,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
+                                          color: Theme.of(ctx).colorScheme.onSurface,
+                                          fontWeight: FontWeight.w800,
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                confirmDismiss: (_) async {
-                                  return await showDialog<bool>(
-                                        context: context,
-                                        builder: (ctx) => AlertDialog(
-                                          backgroundColor: _cardBg,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              20,
-                                            ),
-                                          ),
-                                          title: const Text(
-                                            'Eliminar proyecto',
+                                      content: Text(
+                                        '¿Seguro que quieres eliminar "${project['name']}"? Esta acción no se puede deshacer.',
+                                        style: const TextStyle(
+                                          color: _textGrey,
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, false),
+                                          child: const Text(
+                                            'Cancelar',
                                             style: TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                          ),
-                                          content: Text(
-                                            '¿Seguro que quieres eliminar "${project['name']}"? Esta acción no se puede deshacer.',
-                                            style: const TextStyle(
                                               color: _textGrey,
                                             ),
                                           ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(ctx, false),
-                                              child: const Text(
-                                                'Cancelar',
-                                                style: TextStyle(
-                                                  color: _textGrey,
-                                                ),
-                                              ),
-                                            ),
-                                            ElevatedButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(ctx, true),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: _pink,
-                                                foregroundColor: Colors.white,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(10),
-                                                ),
-                                              ),
-                                              child: const Text('Eliminar'),
-                                            ),
-                                          ],
                                         ),
-                                      ) ??
-                                      false;
-                                },
-                                onDismissed: (_) async {
-                                  final removed = project;
-                                  setState(() {
-                                    projects.removeWhere(
-                                      (p) => p['id'] == project['id'],
-                                    );
-                                  });
-                                  try {
-                                    await ApiService.deleteProject(
-                                      project['id'],
-                                    );
-                                  } catch (e) {
-                                    if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Error al eliminar: $e'),
-                                        backgroundColor: _pink,
-                                      ),
-                                    );
-                                    setState(() => projects.add(removed));
-                                  }
-                                },
-                                child: _ProjectCard(
-                                  project: project,
-                                  onTap: () =>
-                                      context.push('/editor/${project['id']}'),
-                                ),
-                              ),
+                                        ElevatedButton(
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, true),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: _pink,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          child: const Text('Eliminar'),
+                                        ),
+                                      ],
+                                    ),
+                                  ) ??
+                                  false;
+                            },
+                            onDismissed: (_) async {
+                              final removed = project;
+                              setState(() {
+                                projects.removeWhere(
+                                  (p) => p['id'] == project['id'],
+                                );
+                              });
+                              try {
+                                await ApiService.deleteProject(
+                                  project['id'],
+                                );
+                              } catch (e) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error al eliminar: $e'),
+                                    backgroundColor: _pink,
+                                  ),
+                                );
+                                setState(() => projects.add(removed));
+                              }
+                            },
+                            child: _ProjectCard(
+                              project: project,
+                              onTap: () =>
+                                  context.push('/editor/${project['id']}'),
                             ),
                           ),
-                        );
-                      }),
-                  ],
-                ),
-              ),
-      ),
+                        ),
+                      ),
+                    );
+                  }),
+              ],
+            ),
     );
   }
 }
@@ -1062,8 +1035,8 @@ class _SectionHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 24,
               fontWeight: FontWeight.w800,
             ),
@@ -1101,9 +1074,9 @@ class _MemberCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _cardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -1126,8 +1099,8 @@ class _MemberCard extends StatelessWidget {
                       child: Text(
                         name,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w800,
                           fontSize: 16,
                         ),
@@ -1187,7 +1160,7 @@ class _MemberCard extends StatelessWidget {
           ),
           if (canManage)
             PopupMenuButton<String>(
-              color: const Color(0xFF1B1E28),
+              color: Theme.of(context).colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -1195,25 +1168,25 @@ class _MemberCard extends StatelessWidget {
                 if (value == 'role') onEditRole();
                 if (value == 'remove') onRemove();
               },
-              itemBuilder: (context) => const [
+              itemBuilder: (ctx) => [
                 PopupMenuItem(
                   value: 'role',
                   child: Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.manage_accounts_rounded,
                         color: Colors.white,
                         size: 18,
                       ),
-                      SizedBox(width: 10),
+                      const SizedBox(width: 10),
                       Text(
                         'Cambiar rol',
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface),
                       ),
                     ],
                   ),
                 ),
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: 'remove',
                   child: Row(
                     children: [
@@ -1256,9 +1229,9 @@ class _InvitationCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _cardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -1275,8 +1248,8 @@ class _InvitationCard extends StatelessWidget {
                 Text(
                   email,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w800,
                     fontSize: 15.5,
                   ),
@@ -1366,9 +1339,9 @@ class _EmptyStateCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: _cardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         children: [
@@ -1377,8 +1350,8 @@ class _EmptyStateCard extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
@@ -1415,9 +1388,9 @@ class _InfoCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: _cardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1434,8 +1407,8 @@ class _InfoCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 34,
               fontWeight: FontWeight.w900,
             ),
@@ -1506,14 +1479,14 @@ class _ProjectCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(18),
-        decoration: const BoxDecoration(color: _cardBg),
+        decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               name,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),

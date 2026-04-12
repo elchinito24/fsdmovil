@@ -44,16 +44,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     }
   }
 
-  Future<void> _openEditor(int projectId) async {
-    await context.push('/editor/$projectId');
-
-    if (!mounted) return;
-    setState(() {
-      loading = true;
-    });
-    await loadDocuments();
-  }
-
   Future<void> _openPreview(int projectId) async {
     await context.push('/preview/$projectId');
 
@@ -216,8 +206,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                             statusBgColor: _statusBgColor(status),
                             versionLabel: _formatVersion(project),
                             updatedAtLabel: _formatDate(project['updated_at']),
-                            onOpenEditor: () =>
-                                _openEditor(project['id'] as int),
                             onOpenPreview: () =>
                                 _openPreview(project['id'] as int),
                           ),
@@ -244,13 +232,13 @@ class _DocumentsSearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: TextField(
         onChanged: onChanged,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         decoration: const InputDecoration(
           hintText: 'Buscar documentos...',
           hintStyle: TextStyle(color: fsdTextGrey),
@@ -270,7 +258,6 @@ class _DocumentCard extends StatelessWidget {
   final Color statusBgColor;
   final String versionLabel;
   final String updatedAtLabel;
-  final VoidCallback onOpenEditor;
   final VoidCallback onOpenPreview;
 
   const _DocumentCard({
@@ -280,7 +267,6 @@ class _DocumentCard extends StatelessWidget {
     required this.statusBgColor,
     required this.versionLabel,
     required this.updatedAtLabel,
-    required this.onOpenEditor,
     required this.onOpenPreview,
   });
 
@@ -306,9 +292,9 @@ class _DocumentCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: fsdPink.withOpacity(0.05),
@@ -343,8 +329,8 @@ class _DocumentCard extends StatelessWidget {
                     name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                       height: 1.15,
@@ -408,41 +394,22 @@ class _DocumentCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onOpenEditor,
-                    icon: const Icon(Icons.edit_note_rounded, size: 18),
-                    label: const Text('Editar'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: fsdBorderColor),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onOpenPreview,
+                icon: const Icon(Icons.visibility_outlined, size: 18),
+                label: const Text('Vista previa'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: fsdPink,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: onOpenPreview,
-                    icon: const Icon(Icons.visibility_outlined, size: 18),
-                    label: const Text('Vista previa'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: fsdPink,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),
@@ -461,14 +428,14 @@ class _MiniInfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconColor = color ?? fsdTextGrey;
-    final textColor = color ?? Colors.white70;
+    final textColor = color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: const Color(0xFF151823),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF262A37)),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -501,19 +468,19 @@ class _EmptyDocumentsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.description_outlined, color: fsdPink, size: 44),
-          SizedBox(height: 14),
+          const Icon(Icons.description_outlined, color: fsdPink, size: 44),
+          const SizedBox(height: 14),
           Text(
             'No hay documentos todavía',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
@@ -538,19 +505,19 @@ class _NoDocumentsResultsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.search_off_rounded, color: fsdPink, size: 42),
-          SizedBox(height: 14),
+          const Icon(Icons.search_off_rounded, color: fsdPink, size: 42),
+          const SizedBox(height: 14),
           Text(
             'No encontramos documentos con esa búsqueda',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 19,
               fontWeight: FontWeight.w800,
             ),
@@ -578,19 +545,19 @@ class _DocumentsErrorState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         children: [
           const Icon(Icons.error_outline_rounded, color: fsdPink, size: 48),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'No pudimos cargar los documentos',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),

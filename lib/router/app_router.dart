@@ -255,9 +255,9 @@ class _SectionPlaceholderScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: fsdCardBg,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: fsdBorderColor),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         child: Column(
           children: [
@@ -271,11 +271,11 @@ class _SectionPlaceholderScreen extends StatelessWidget {
               child: Icon(icon, size: 34, color: fsdPink),
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Esta sección será la siguiente que construiremos',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
               ),

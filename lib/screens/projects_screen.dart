@@ -93,14 +93,14 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
           context: context,
           builder: (ctx) {
             return AlertDialog(
-              backgroundColor: fsdCardBg,
+              backgroundColor: Theme.of(ctx).colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
-              title: const Text(
+              title: Text(
                 'Eliminar proyecto',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Theme.of(ctx).colorScheme.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -429,40 +429,40 @@ class _ProjectsSearchAndFilter extends StatelessWidget {
     }
   }
 
-  Widget _searchField() => Container(
+  Widget _searchField(BuildContext context) => Container(
         decoration: BoxDecoration(
-          color: fsdCardBg,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: fsdBorderColor),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         child: TextField(
           onChanged: onSearchChanged,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+          decoration: InputDecoration(
             hintText: 'Buscar proyectos...',
-            hintStyle: TextStyle(color: fsdTextGrey),
-            prefixIcon: Icon(Icons.search_rounded, color: fsdTextGrey),
+            hintStyle: const TextStyle(color: fsdTextGrey),
+            prefixIcon: const Icon(Icons.search_rounded, color: fsdTextGrey),
             border: InputBorder.none,
-            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           ),
         ),
       );
 
-  Widget _filterDropdown() => Container(
+  Widget _filterDropdown(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
         decoration: BoxDecoration(
-          color: fsdCardBg,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: fsdBorderColor),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
             value: selectedStatus,
-            dropdownColor: const Color(0xFF1B1E28),
-            iconEnabledColor: Colors.white,
+            dropdownColor: Theme.of(context).colorScheme.surface,
+            iconEnabledColor: Theme.of(context).colorScheme.onSurface,
             isExpanded: true,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 15,
               fontWeight: FontWeight.w600,
             ),
@@ -486,17 +486,17 @@ class _ProjectsSearchAndFilter extends StatelessWidget {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(flex: 3, child: _searchField()),
+              Expanded(flex: 3, child: _searchField(context)),
               const SizedBox(width: 12),
-              Expanded(flex: 2, child: _filterDropdown()),
+              Expanded(flex: 2, child: _filterDropdown(context)),
             ],
           );
         }
         return Column(
           children: [
-            _searchField(),
+            _searchField(context),
             const SizedBox(height: 10),
-            _filterDropdown(),
+            _filterDropdown(context),
           ],
         );
       },
@@ -556,9 +556,9 @@ class _ProjectCard extends StatelessWidget {
       onTap: onOpenEditor,
       child: Ink(
         decoration: BoxDecoration(
-          color: fsdCardBg,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: fsdBorderColor),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: fsdPink.withOpacity(0.05),
@@ -579,8 +579,8 @@ class _ProjectCard extends StatelessWidget {
                       name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
                         height: 1.15,
@@ -608,7 +608,7 @@ class _ProjectCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   PopupMenuButton<String>(
-                    color: const Color(0xFF1B1E28),
+                    color: Theme.of(context).colorScheme.surface,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -714,10 +714,10 @@ class _ProjectCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 18),
-              const Text(
+              Text(
                 'Progreso',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
                 ),
@@ -728,7 +728,7 @@ class _ProjectCard extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: progressValue / 100,
                   minHeight: 9,
-                  backgroundColor: const Color(0xFF2A2D3A),
+                  backgroundColor: Theme.of(context).colorScheme.outlineVariant,
                   valueColor: const AlwaysStoppedAnimation<Color>(fsdPink),
                 ),
               ),
@@ -750,8 +750,8 @@ class _ProjectCard extends StatelessWidget {
                       icon: const Icon(Icons.edit_note_rounded, size: 18),
                       label: const Text('Editar SRS'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: fsdBorderColor),
+                        foregroundColor: Theme.of(context).colorScheme.onSurface,
+                        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
@@ -796,14 +796,14 @@ class _MiniInfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconColor = color ?? fsdTextGrey;
-    final textColor = color ?? Colors.white70;
+    final textColor = color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: const Color(0xFF151823),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF262A37)),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -836,25 +836,25 @@ class _EmptyProjectsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.inventory_2_outlined, color: fsdPink, size: 44),
-          SizedBox(height: 14),
+          const Icon(Icons.inventory_2_outlined, color: fsdPink, size: 44),
+          const SizedBox(height: 14),
           Text(
             'No se encontraron proyectos',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
           ),
-          SizedBox(height: 8),
-          Text(
+          const SizedBox(height: 8),
+          const Text(
             'Crea tu primer proyecto para empezar a trabajar en tu documentación SRS.',
             textAlign: TextAlign.center,
             style: TextStyle(color: fsdTextGrey, fontSize: 14, height: 1.5),
@@ -873,25 +873,25 @@ class _NoSearchResultsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.search_off_rounded, color: fsdPink, size: 42),
-          SizedBox(height: 14),
+          const Icon(Icons.search_off_rounded, color: fsdPink, size: 42),
+          const SizedBox(height: 14),
           Text(
             'No hay resultados con esos filtros',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 19,
               fontWeight: FontWeight.w800,
             ),
           ),
-          SizedBox(height: 8),
-          Text(
+          const SizedBox(height: 8),
+          const Text(
             'Prueba cambiando el texto de búsqueda o selecciona otro estado.',
             textAlign: TextAlign.center,
             style: TextStyle(color: fsdTextGrey, fontSize: 14, height: 1.5),
@@ -913,19 +913,19 @@ class _ProjectsErrorState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         children: [
           const Icon(Icons.error_outline_rounded, color: fsdPink, size: 48),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'No pudimos cargar los proyectos',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),

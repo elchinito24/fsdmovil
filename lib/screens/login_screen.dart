@@ -434,18 +434,23 @@ class _SocialButton extends StatelessWidget {
   }
 }
 
-// Google icon (G multicolor)
+// Google icon using official PNG
 class _GoogleIcon extends StatelessWidget {
   const _GoogleIcon();
   @override
   Widget build(BuildContext context) {
-    return const Text(
-      'G',
-      style: TextStyle(
-        color: Color(0xFF4285F4),
-        fontSize: 22,
-        fontWeight: FontWeight.bold,
-        fontFamily: 'sans-serif',
+    return Image.network(
+      'http://pngimg.com/uploads/google/google_PNG19635.png',
+      width: 26,
+      height: 26,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => const Text(
+        'G',
+        style: TextStyle(
+          color: Color(0xFF4285F4),
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

@@ -73,21 +73,21 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
     }
   }
 
-  InputDecoration _inputDecoration(String hint) {
+  InputDecoration _inputDecoration(BuildContext context, String hint) {
     return InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(color: _textGrey),
       filled: true,
-      fillColor: _fieldBg,
+      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -110,9 +110,9 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: _darkBg,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
@@ -182,7 +182,7 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
                 controller: nameController,
                 style: const TextStyle(color: Colors.white),
                 decoration:
-                    _inputDecoration('Ingrese nombre del workspace'),
+                    _inputDecoration(context, 'Ingrese nombre del workspace'),
                 onChanged: (value) {
                   final newSlug = generateSlug(value);
                   slugController.text = newSlug;
@@ -198,7 +198,7 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
               TextField(
                 controller: slugController,
                 style: const TextStyle(color: Colors.white),
-                decoration: _inputDecoration('ejemplo-workspace'),
+                decoration: _inputDecoration(context, 'ejemplo-workspace'),
               ),
               const SizedBox(height: 20),
 
@@ -208,7 +208,7 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
                 controller: descriptionController,
                 maxLines: 4,
                 style: const TextStyle(color: Colors.white),
-                decoration: _inputDecoration('Ingrese una descripción'),
+                decoration: _inputDecoration(context, 'Ingrese una descripción'),
               ),
               const SizedBox(height: 32),
 

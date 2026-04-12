@@ -28,6 +28,10 @@ class _EditorScreenState extends State<EditorScreen> {
   bool saving = false;
   String? errorMessage;
 
+  // ── Ownership ─────────────────────────────────────────────────────────────
+  bool _isOwner = true; // assume owner until confirmed otherwise
+  String _previousStatus = 'draft'; // status before sending to review
+
   // ── Document data ─────────────────────────────────────────────────────────
   Map<String, dynamic> _docData = {};
   Map<String, dynamic>? fullResponse;
@@ -175,6 +179,23 @@ class _EditorScreenState extends State<EditorScreen> {
 
       _initControllersForSections(docData, formSections);
 
+      // Determine if the current user is the owner of the project.
+      final ownerField = projectData['owner'];
+      final ownerEmail = (ownerField is Map
+              ? ownerField['email']
+              : ownerField)
+          ?.toString()
+          .trim()
+          .toLowerCase() ??
+          '';
+      final currentEmail =
+          (AuthService.userEmail ?? '').trim().toLowerCase();
+      final isOwner =
+          ownerEmail.isNotEmpty && ownerEmail == currentEmail;
+
+      final rawStatus =
+          (projectData['status'] ?? 'draft').toString().trim();
+
       setState(() {
         _docData = docData;
         _formSections = formSections;
@@ -185,6 +206,8 @@ class _EditorScreenState extends State<EditorScreen> {
         serverUpdatedAt = srsResponse['updated_at']?.toString();
         _projectCode =
             (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
+        _isOwner = isOwner;
+        _previousStatus = rawStatus == 'review' ? 'in_progress' : rawStatus;
         loading = false;
         errorMessage = null;
       });
@@ -504,6 +527,100 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  // ── Send for review (non-owners) ──────────────────────────────────────────
+
+  Future<void> sendForReview() async {
+    if (saving) return;
+
+    // Confirm with user.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _cardBg,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text(
+          'Enviar a revisión',
+          style:
+              TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          'Tus cambios se guardarán como una versión nueva y el dueño del proyecto podrá aceptarlos o rechazarlos. ¿Continuar?',
+          style: TextStyle(color: _textGrey, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child:
+                const Text('Cancelar', style: TextStyle(color: _textGrey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _pink,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enviar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() {
+      saving = true;
+      _saveStatus = 'saving';
+    });
+
+    try {
+      // 1. Save a named version snapshot so the owner can restore it if rejected.
+      await ApiService.createProjectVersion(widget.projectId, {
+        'srs_data': _docData,
+        'label': 'Revisión pendiente',
+        'created_by_email': AuthService.userEmail ?? '',
+      });
+
+      // 2. Write the new SRS data live.
+      await ApiService.updateProjectSrs(widget.projectId, {
+        'srs_data': _docData,
+        'projectCode': _projectCode,
+      });
+
+      // 3. Mark the project as "in review".
+      await ApiService.partialUpdateProject(
+          widget.projectId, {'status': 'review'});
+
+      if (!mounted) return;
+      setState(() {
+        _saveStatus = 'saved';
+        _lastRealtimeMessage = 'Enviado a revisión';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cambios enviados a revisión'),
+          backgroundColor: Color(0xFF1BC47D),
+        ),
+      );
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saveStatus = 'error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al enviar: $e'),
+          backgroundColor: _pink,
+        ),
+      );
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
+      });
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
   Future<void> _downloadDocx() async {
     if (_downloading) return;
     setState(() => _downloading = true);
@@ -532,7 +649,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     if (_saveStatus == 'saving') {
       color = const Color(0xFF55A6FF);
-      label = 'Guardando';
+      label = _isOwner ? 'Guardando' : 'Enviando';
       iconWidget = SizedBox(
         width: 16,
         height: 16,
@@ -540,7 +657,7 @@ class _EditorScreenState extends State<EditorScreen> {
       );
     } else if (_saveStatus == 'saved') {
       color = const Color(0xFF1BC47D);
-      label = 'Guardado';
+      label = _isOwner ? 'Guardado' : 'Enviado';
       iconWidget = const Icon(
         Icons.check_circle_outline_rounded,
         size: 16,
@@ -551,15 +668,24 @@ class _EditorScreenState extends State<EditorScreen> {
       label = 'Error';
       iconWidget =
           const Icon(Icons.error_outline_rounded, size: 16, color: _pink);
-    } else {
+    } else if (_isOwner) {
       color = Colors.white;
       label = 'Guardar';
       iconWidget =
           const Icon(Icons.save_outlined, size: 16, color: Colors.white);
+    } else {
+      color = _pink;
+      label = 'Enviar revisión';
+      iconWidget =
+          const Icon(Icons.send_rounded, size: 16, color: _pink);
     }
 
     return TextButton.icon(
-      onPressed: saving ? null : saveChanges,
+      onPressed: saving
+          ? null
+          : _isOwner
+              ? saveChanges
+              : sendForReview,
       icon: iconWidget,
       label: Text(
         label,

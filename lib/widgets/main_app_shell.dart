@@ -18,6 +18,8 @@ class MainAppShell extends ConsumerWidget {
   final Widget? action;
   final bool useBodyPadding;
   final bool showTopNav;
+  final Widget? floatingActionButton;
+  final Future<void> Function()? onRefresh;
 
   const MainAppShell({
     super.key,
@@ -30,6 +32,8 @@ class MainAppShell extends ConsumerWidget {
     this.action,
     this.useBodyPadding = true,
     this.showTopNav = true,
+    this.floatingActionButton,
+    this.onRefresh,
   });
 
   String _buildInitials() {
@@ -67,6 +71,7 @@ class MainAppShell extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: bgColor,
+      floatingActionButton: floatingActionButton,
       body: Container(
         decoration: BoxDecoration(
           gradient: RadialGradient(
@@ -151,7 +156,8 @@ class MainAppShell extends ConsumerWidget {
                 const SizedBox(height: 18),
               ],
               Expanded(
-                child: ListView(
+                child: Builder(builder: (context) {
+                  final listView = ListView(
                   padding: EdgeInsets.fromLTRB(
                     useBodyPadding ? 20 : 0,
                     0,
@@ -208,12 +214,21 @@ class MainAppShell extends ConsumerWidget {
                     if (action != null) ...[
                       const SizedBox(height: 22),
                       action!,
+                      const SizedBox(height: 20),
                     ] else ...[
                       const SizedBox(height: 26),
                     ],
                     child,
                   ],
-                ),
+                  );
+                  return onRefresh != null
+                      ? RefreshIndicator(
+                          color: fsdPink,
+                          onRefresh: onRefresh!,
+                          child: listView,
+                        )
+                      : listView;
+                }),
               ),
             ],
           ),

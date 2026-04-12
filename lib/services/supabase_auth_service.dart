@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fsdmovil/config/app_config.dart';
 
@@ -81,6 +82,13 @@ class SupabaseAuthService {
 
     final completer = Completer<String>();
     late StreamSubscription<AuthState> sub;
+    AppLifecycleListener? lifecycleListener;
+
+    void cleanup() {
+      sub.cancel();
+      lifecycleListener?.dispose();
+      lifecycleListener = null;
+    }
 
     sub = _client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.signedIn &&
@@ -88,9 +96,26 @@ class SupabaseAuthService {
         if (!completer.isCompleted) {
           completer.complete(data.session!.accessToken);
         }
-        sub.cancel();
+        cleanup();
       }
     });
+
+    // When the user returns from the browser without completing OAuth,
+    // wait a short grace period for a potential deep-link redirect,
+    // then cancel if the completer is still pending.
+    lifecycleListener = AppLifecycleListener(
+      onResume: () {
+        if (completer.isCompleted) return;
+        Future.delayed(const Duration(seconds: 3), () {
+          if (!completer.isCompleted) {
+            cleanup();
+            completer.completeError(
+              Exception('El inicio de sesión fue cancelado.'),
+            );
+          }
+        });
+      },
+    );
 
     await _client.auth.signInWithOAuth(
       provider,
@@ -100,7 +125,7 @@ class SupabaseAuthService {
     return completer.future.timeout(
       const Duration(minutes: 5),
       onTimeout: () {
-        sub.cancel();
+        cleanup();
         throw Exception('El inicio de sesión fue cancelado o expiró.');
       },
     );

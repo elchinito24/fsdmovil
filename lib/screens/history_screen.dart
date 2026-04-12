@@ -262,13 +262,13 @@ class _HistorySearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: TextField(
         onChanged: onChanged,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         decoration: const InputDecoration(
           hintText: 'Buscar por proyecto, código, versión o workspace...',
           hintStyle: TextStyle(color: fsdTextGrey),
@@ -326,9 +326,9 @@ class _HistoryCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: fsdPink.withOpacity(0.05),
@@ -363,8 +363,8 @@ class _HistoryCard extends StatelessWidget {
                     name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                       height: 1.15,
@@ -419,10 +419,10 @@ class _HistoryCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Progreso actual',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
               ),
@@ -433,7 +433,7 @@ class _HistoryCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: progressValue / 100,
                 minHeight: 9,
-                backgroundColor: const Color(0xFF2A2D3A),
+                backgroundColor: Theme.of(context).colorScheme.outlineVariant,
                 valueColor: const AlwaysStoppedAnimation<Color>(fsdPink),
               ),
             ),
@@ -456,7 +456,7 @@ class _HistoryCard extends StatelessWidget {
                     label: const Text('Abrir editor'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
-                      side: const BorderSide(color: fsdBorderColor),
+                      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -500,14 +500,14 @@ class _HistoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconColor = color ?? fsdTextGrey;
-    final textColor = color ?? Colors.white70;
+    final textColor = color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: const Color(0xFF151823),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF262A37)),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -540,19 +540,19 @@ class _EmptyHistoryState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.history_rounded, color: fsdPink, size: 44),
-          SizedBox(height: 14),
+          const Icon(Icons.history_rounded, color: fsdPink, size: 44),
+          const SizedBox(height: 14),
           Text(
             'No hay historial todavía',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
@@ -577,19 +577,19 @@ class _NoHistoryResultsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.search_off_rounded, color: fsdPink, size: 42),
-          SizedBox(height: 14),
+          const Icon(Icons.search_off_rounded, color: fsdPink, size: 42),
+          const SizedBox(height: 14),
           Text(
             'No hay resultados en el historial',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 19,
               fontWeight: FontWeight.w800,
             ),
@@ -617,19 +617,19 @@ class _HistoryErrorState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         children: [
           const Icon(Icons.error_outline_rounded, color: fsdPink, size: 48),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'No pudimos cargar el historial',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),

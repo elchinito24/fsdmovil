@@ -98,10 +98,10 @@ class _TopNavMenuState extends State<TopNavMenu> {
               decoration: BoxDecoration(
                 color: isSelected
                     ? const Color(0x33E8365D)
-                    : const Color(0xFF171922),
+                    : Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isSelected ? fsdPink : fsdBorderColor,
+                  color: isSelected ? fsdPink : Theme.of(context).colorScheme.outlineVariant,
                   width: 1.2,
                 ),
                 boxShadow: isSelected

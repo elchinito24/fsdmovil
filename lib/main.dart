@@ -5,6 +5,22 @@ import 'package:fsdmovil/config/app_config.dart';
 import 'package:fsdmovil/providers/theme_mode_provider.dart';
 import 'package:fsdmovil/router/app_router.dart';
 import 'package:fsdmovil/services/auth_service.dart';
+import 'package:fsdmovil/services/api_service.dart';
+
+class _NoOverscrollBehavior extends ScrollBehavior {
+  const _NoOverscrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      const BouncingScrollPhysics();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => child;
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,8 +37,34 @@ Future<void> main() async {
   runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends ConsumerWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
+
+  @override
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Recrear el adaptador HTTP para descartar conexiones TCP
+      // que Android cerró mientras el teléfono estaba inactivo.
+      ApiService.resetConnections();
+    }
+  }
 
   ThemeData _buildDarkTheme() {
     return ThemeData(
@@ -33,6 +75,9 @@ class MyApp extends ConsumerWidget {
         primary: Color(0xFFE8365D),
         secondary: Color(0xFFE8365D),
         surface: Color(0xFF191B24),
+        surfaceContainerHighest: Color(0xFF1E2030),
+        outline: Color(0xFF2A2D3A),
+        outlineVariant: Color(0xFF2A2D3A),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: const Color(0xFFE8365D),
@@ -52,6 +97,9 @@ class MyApp extends ConsumerWidget {
         primary: Color(0xFFE8365D),
         secondary: Color(0xFFE8365D),
         surface: Colors.white,
+        surfaceContainerHighest: Color(0xFFF0F1F5),
+        outline: Color(0xFFE5E7EF),
+        outlineVariant: Color(0xFFE5E7EF),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: const Color(0xFFE8365D),
@@ -63,7 +111,7 @@ class MyApp extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final preference = ref.watch(themePreferenceProvider);
 
     return MaterialApp.router(
@@ -72,6 +120,7 @@ class MyApp extends ConsumerWidget {
       themeMode: preference.themeMode,
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),
+      scrollBehavior: const _NoOverscrollBehavior(),
     );
   }
 }

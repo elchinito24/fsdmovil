@@ -211,9 +211,9 @@ class _QuickAccessCard extends StatelessWidget {
       onTap: onTap,
       child: Ink(
         decoration: BoxDecoration(
-          color: fsdCardBg,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: fsdBorderColor),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: fsdPink.withOpacity(0.05),
@@ -241,8 +241,8 @@ class _QuickAccessCard extends StatelessWidget {
                 title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                   height: 1.2,
@@ -277,11 +277,11 @@ class _InfoTimelineCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
           _TimelineStep(
             title: '1. Crear espacio de trabajo',
@@ -332,7 +332,7 @@ class _TimelineStep extends StatelessWidget {
             child: Column(
               children: [
                 if (!isFirst)
-                  Container(width: 2, height: 14, color: fsdBorderColor)
+                  Container(width: 2, height: 14, color: Theme.of(context).colorScheme.outlineVariant)
                 else
                   const SizedBox(height: 14),
                 Container(
@@ -355,7 +355,7 @@ class _TimelineStep extends StatelessWidget {
                     child: Container(
                       width: 2,
                       margin: const EdgeInsets.only(top: 6),
-                      color: fsdBorderColor,
+                      color: Theme.of(context).colorScheme.outlineVariant,
                     ),
                   ),
               ],
@@ -370,8 +370,8 @@ class _TimelineStep extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                     ),

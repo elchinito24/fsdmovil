@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:fsdmovil/config/app_config.dart';
 
@@ -82,6 +83,14 @@ class ApiService {
 
   static void clearAuthToken() {
     _dio.options.headers.remove('Authorization');
+  }
+
+  /// Cierra y recrea el adaptador HTTP de Dio.
+  /// Llamar cuando la app regresa del background para evitar
+  /// conexiones TCP muertas del pool que se quedan colgadas.
+  static void resetConnections() {
+    _dio.httpClientAdapter = IOHttpClientAdapter();
+    _plainDio.httpClientAdapter = IOHttpClientAdapter();
   }
 
   static Future<List<dynamic>> getProjects() async {

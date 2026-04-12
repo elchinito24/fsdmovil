@@ -111,21 +111,21 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     }
   }
 
-  InputDecoration _inputDecoration(String hint) {
+  InputDecoration _inputDecoration(BuildContext context, String hint) {
     return InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(color: _textGrey),
       filled: true,
-      fillColor: _fieldBg,
+      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -148,9 +148,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: _darkBg,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
@@ -178,9 +178,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
-                            color: _cardBg,
+                            color: Theme.of(context).colorScheme.surface,
                             borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: _borderColor),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -263,7 +263,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                           controller: nameController,
                           style: const TextStyle(color: Colors.white),
                           decoration: _inputDecoration(
-                              'Ingrese nombre del proyecto'),
+                              context, 'Ingrese nombre del proyecto'),
                         ),
                         const SizedBox(height: 20),
 
@@ -272,7 +272,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         TextField(
                           controller: codeController,
                           style: const TextStyle(color: Colors.white),
-                          decoration: _inputDecoration('Ej. SIS-002'),
+                          decoration: _inputDecoration(context, 'Ej. SIS-002'),
                         ),
                         const SizedBox(height: 20),
 
@@ -283,7 +283,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                           maxLines: 4,
                           style: const TextStyle(color: Colors.white),
                           decoration:
-                              _inputDecoration('Ingrese una descripción'),
+                              _inputDecoration(context, 'Ingrese una descripción'),
                         ),
                         const SizedBox(height: 20),
 
@@ -293,15 +293,15 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                           padding:
                               const EdgeInsets.symmetric(horizontal: 14),
                           decoration: BoxDecoration(
-                            color: _fieldBg,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: _borderColor),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<int>(
                               value: selectedWorkspaceId,
                               isExpanded: true,
-                              dropdownColor: _cardBg,
+                              dropdownColor: Theme.of(context).colorScheme.surface,
                               style: const TextStyle(color: Colors.white),
                               iconEnabledColor: _textGrey,
                               items: workspaces.map((ws) {
@@ -323,15 +323,15 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                           padding:
                               const EdgeInsets.symmetric(horizontal: 14),
                           decoration: BoxDecoration(
-                            color: _fieldBg,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: _borderColor),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<int>(
                               value: selectedTemplateId,
                               isExpanded: true,
-                              dropdownColor: _cardBg,
+                              dropdownColor: Theme.of(context).colorScheme.surface,
                               style: const TextStyle(color: Colors.white),
                               iconEnabledColor: _textGrey,
                               items: templates.map((tpl) {
