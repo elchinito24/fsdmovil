@@ -670,6 +670,7 @@ class _MeetingModeScreenState extends State<MeetingModeScreen> {
   @override
   Widget build(BuildContext context) {
     return MainAppShell(
+      insideShell: true,
       selectedItem: null,
       eyebrow: 'Exclusivo móvil',
       titleWhite: 'Modo Reunión ',

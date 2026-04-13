@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
 import 'package:fsdmovil/services/auth_service.dart';
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
@@ -92,6 +93,58 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       state = state.copyWith(isLoading: false);
       return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<String?> verifyEmailCode({
+    required String email,
+    required String code,
+    String? firstName,
+    String? lastName,
+    String? password,
+  }) async {
+    try {
+      state = state.copyWith(isLoading: true);
+      await AuthService.verifyEmailCode(
+        email: email,
+        code: code,
+        firstName: firstName,
+        lastName: lastName,
+        password: password,
+      );
+      state = state.copyWith(isLoading: false);
+      return null;
+    } catch (e) {
+      state = state.copyWith(isLoading: false);
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<String?> resendVerificationCode({required String email}) async {
+    try {
+      await AuthService.resendVerificationCode(email: email);
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<String?> socialLogin(OAuthProvider provider) async {
+    try {
+      state = state.copyWith(isLoading: true);
+      await AuthService.socialLogin(provider);
+      state = state.copyWith(
+        isAuthenticated: true,
+        isLoading: false,
+        userEmail: AuthService.userEmail,
+      );
+      return null;
+    } catch (e) {
+      state = state.copyWith(isAuthenticated: false, isLoading: false);
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      // If user simply cancelled (returned from browser), don't show an error
+      if (msg.contains('cancelado') || msg.contains('cancelled')) return null;
+      return msg;
     }
   }
 

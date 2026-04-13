@@ -3,9 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
 
 const _pink = Color(0xFFE8365D);
-const _darkBg = Color(0xFF0F1017);
-const _fieldBg = Color(0xFF1E2030);
-const _borderColor = Color(0xFF2A2D3A);
 const _textGrey = Color(0xFF8E8E93);
 
 class CreateWorkspaceScreen extends StatefulWidget {
@@ -65,29 +62,97 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
       context.pop(true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al crear workspace: $e')),
-      );
+      final errorStr = '$e'.replaceFirst('Exception: ', '');
+      final isConflict = errorStr.toLowerCase().contains('ya existe') ||
+          errorStr.toLowerCase().contains('already') ||
+          errorStr.toLowerCase().contains('unique');
+      final deletedId = isConflict
+          ? await ApiService.findInactiveWorkspaceByName(
+              nameController.text.trim())
+          : null;
+
+      if (deletedId != null) {
+        final reactivate = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: Theme.of(ctx).colorScheme.surface,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text(
+              'Workspace inactivo',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            content: Text(
+              'Ya existe un workspace con el nombre "${nameController.text.trim()}" que fue eliminado anteriormente (quedó inactivo). ¿Deseas reactivarlo?',
+              style: const TextStyle(color: _textGrey, height: 1.45),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar',
+                    style: TextStyle(color: _textGrey)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Reactivar'),
+              ),
+            ],
+          ),
+        );
+
+        if (reactivate == true && mounted) {
+          try {
+            await ApiService.partialUpdateWorkspace(deletedId, {
+              'is_active': true,
+              'name': nameController.text.trim(),
+              'slug': slugController.text.trim(),
+              'description': descriptionController.text.trim(),
+            });
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Workspace reactivado correctamente')),
+            );
+            context.pop(true);
+          } catch (reactivateErr) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text('$reactivateErr'
+                      .replaceFirst('Exception: ', ''))),
+            );
+          }
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorStr)),
+        );
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }
   }
 
-  InputDecoration _inputDecoration(String hint) {
+  InputDecoration _inputDecoration(BuildContext context, String hint) {
     return InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(color: _textGrey),
       filled: true,
-      fillColor: _fieldBg,
+      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -110,9 +175,9 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: _darkBg,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
@@ -182,7 +247,7 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
                 controller: nameController,
                 style: const TextStyle(color: Colors.white),
                 decoration:
-                    _inputDecoration('Ingrese nombre del workspace'),
+                    _inputDecoration(context, 'Ingrese nombre del workspace'),
                 onChanged: (value) {
                   final newSlug = generateSlug(value);
                   slugController.text = newSlug;
@@ -198,7 +263,7 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
               TextField(
                 controller: slugController,
                 style: const TextStyle(color: Colors.white),
-                decoration: _inputDecoration('ejemplo-workspace'),
+                decoration: _inputDecoration(context, 'ejemplo-workspace'),
               ),
               const SizedBox(height: 20),
 
@@ -208,7 +273,7 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
                 controller: descriptionController,
                 maxLines: 4,
                 style: const TextStyle(color: Colors.white),
-                decoration: _inputDecoration('Ingrese una descripción'),
+                decoration: _inputDecoration(context, 'Ingrese una descripción'),
               ),
               const SizedBox(height: 32),
 

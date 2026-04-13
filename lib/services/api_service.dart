@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:fsdmovil/config/app_config.dart';
 
@@ -84,6 +85,14 @@ class ApiService {
     _dio.options.headers.remove('Authorization');
   }
 
+  /// Cierra y recrea el adaptador HTTP de Dio.
+  /// Llamar cuando la app regresa del background para evitar
+  /// conexiones TCP muertas del pool que se quedan colgadas.
+  static void resetConnections() {
+    _dio.httpClientAdapter = IOHttpClientAdapter();
+    _plainDio.httpClientAdapter = IOHttpClientAdapter();
+  }
+
   static Future<List<dynamic>> getProjects() async {
     try {
       final response = await _dio.get('/projects/');
@@ -94,6 +103,19 @@ class ApiService {
       );
     } catch (e) {
       throw Exception('Error al obtener proyectos: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getProject(int projectId) async {
+    try {
+      final response = await _dio.get('/projects/$projectId/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener proyecto: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener proyecto: $e');
     }
   }
 
@@ -231,6 +253,132 @@ class ApiService {
     }
   }
 
+  // ── Soft-delete reactivation helpers ─────────────────────────────────────
+  // Because the backend soft-deletes via is_active=false, a record with the
+  // same name/slug still occupies the unique constraint.
+  // We try two strategies in order:
+  //   1. Session cache (fastest, same-session deletes)
+  //   2. API search by name (works cross-session)
+  static final Map<String, int> _deletedWorkspaces = {};
+  static final Map<String, int> _deletedProjects = {};
+
+  static void cacheDeletedWorkspace(String name, int id) =>
+      _deletedWorkspaces[name.toLowerCase().trim()] = id;
+
+  static void cacheDeletedProject(String name, int id) =>
+      _deletedProjects[name.toLowerCase().trim()] = id;
+
+  static int? findDeletedWorkspace(String name) =>
+      _deletedWorkspaces[name.toLowerCase().trim()];
+
+  static int? findDeletedProject(String name) =>
+      _deletedProjects[name.toLowerCase().trim()];
+
+  /// Searches the workspace list for an inactive workspace by name.
+  /// Tries common DRF query params. Returns the id or null if not found.
+  static Future<int?> findInactiveWorkspaceByName(String name) async {
+    final key = name.toLowerCase().trim();
+    // 1. session cache
+    final cached = _deletedWorkspaces[key];
+    if (cached != null) return cached;
+    // 2. fetch all (or search) – try ?search=, fallback to full list
+    try {
+      final List<dynamic> results = [];
+      for (final params in [
+        {'search': name, 'is_active': 'false'},
+        {'search': name},
+        {'is_active': 'false'},
+        <String, dynamic>{},
+      ]) {
+        try {
+          final r = await _dio.get('/workspaces/', queryParameters: params);
+          final data = r.data;
+          final items = data is Map ? (data['results'] ?? []) : (data ?? []);
+          results.addAll(items as List);
+          if (results.isNotEmpty) break;
+        } catch (_) {}
+      }
+      for (final w in results) {
+        if (w is Map &&
+            (w['name'] ?? '').toString().toLowerCase().trim() == key) {
+          final isActive = w['is_active'];
+          if (isActive == false || isActive == 'false') {
+            return w['id'] as int?;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Searches the project list for an inactive project by name.
+  static Future<int?> findInactiveProjectByName(String name) async {
+    final key = name.toLowerCase().trim();
+    final cached = _deletedProjects[key];
+    if (cached != null) return cached;
+    try {
+      final List<dynamic> results = [];
+      for (final params in [
+        {'search': name, 'is_active': 'false'},
+        {'search': name},
+        {'is_active': 'false'},
+        <String, dynamic>{},
+      ]) {
+        try {
+          final r = await _dio.get('/projects/', queryParameters: params);
+          final data = r.data;
+          final items = data is Map ? (data['results'] ?? []) : (data ?? []);
+          results.addAll(items as List);
+          if (results.isNotEmpty) break;
+        } catch (_) {}
+      }
+      for (final p in results) {
+        if (p is Map &&
+            (p['name'] ?? '').toString().toLowerCase().trim() == key) {
+          final isActive = p['is_active'];
+          if (isActive == false || isActive == 'false') {
+            return p['id'] as int?;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<Map<String, dynamic>> partialUpdateWorkspace(
+    int workspaceId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response =
+          await _dio.patch('/workspaces/$workspaceId/', data: data);
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(_parseApiError(e, 'Error al actualizar workspace'));
+    } catch (e) {
+      throw Exception('Error al actualizar workspace: $e');
+    }
+  }
+
+  /// Parses Django REST Framework validation error responses into a readable string.
+  /// DRF returns errors as Map<field, List<String>> or {detail: String}.
+  static String _parseApiError(DioException e, String fallback) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final parts = <String>[];
+      data.forEach((key, value) {
+        if (value is List) {
+          parts.add(value.map((v) => v.toString()).join(', '));
+        } else {
+          parts.add(value.toString());
+        }
+      });
+      if (parts.isNotEmpty) return parts.join(' | ');
+    }
+    if (data is String && data.isNotEmpty) return data;
+    return e.message ?? fallback;
+  }
+
   static Future<Map<String, dynamic>> createProject(
     Map<String, dynamic> data,
   ) async {
@@ -238,9 +386,7 @@ class ApiService {
       final response = await _dio.post('/projects/', data: data);
       return Map<String, dynamic>.from(response.data);
     } on DioException catch (e) {
-      throw Exception(
-        'Error al crear proyecto: ${e.response?.data ?? e.message}',
-      );
+      throw Exception(_parseApiError(e, 'Error al crear proyecto'));
     } catch (e) {
       throw Exception('Error al crear proyecto: $e');
     }
@@ -253,9 +399,7 @@ class ApiService {
       final response = await _dio.post('/workspaces/', data: data);
       return Map<String, dynamic>.from(response.data);
     } on DioException catch (e) {
-      throw Exception(
-        'Error al crear workspace: ${e.response?.data ?? e.message}',
-      );
+      throw Exception(_parseApiError(e, 'Error al crear workspace'));
     } catch (e) {
       throw Exception('Error al crear workspace: $e');
     }
@@ -777,13 +921,603 @@ class ApiService {
     }
   }
 
-  static Future<List<dynamic>> getProjectHistory(int projectId) async {
+  // ─── AI ──────────────────────────────────────────────────────────────────
+
+  static Future<List<dynamic>> getAiProviders() async {
     try {
-      final response = await _dio.get('/projects/$projectId/history/');
-      final data = Map<String, dynamic>.from(response.data);
-      return List<dynamic>.from(data['history'] ?? []);
+      final response = await _dio.get('/ai/providers/');
+      if (response.data is List) return List<dynamic>.from(response.data);
+      return List<dynamic>.from(response.data['results'] ?? []);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener proveedores IA: ${e.response?.data ?? e.message}',
+      );
     } catch (e) {
-      throw Exception('Error al cargar historial: $e');
+      throw Exception('Error al obtener proveedores IA: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getAiSettings() async {
+    try {
+      final response = await _dio.get('/ai/settings/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener configuración IA: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener configuración IA: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateAiSettings(
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.put('/ai/settings/', data: data);
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al actualizar configuración IA: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al actualizar configuración IA: $e');
+    }
+  }
+
+  static Future<void> deleteAiProviderKey(String provider) async {
+    try {
+      await _dio.delete('/ai/settings/keys/$provider/');
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al eliminar clave IA: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al eliminar clave IA: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> validateAiKey(
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.post('/ai/validate-key/', data: data);
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al validar clave IA: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al validar clave IA: $e');
+    }
+  }
+
+  // ─── Projects (extended) ─────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> updateProject(
+    int projectId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.put('/projects/$projectId/', data: data);
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al actualizar proyecto: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al actualizar proyecto: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> partialUpdateProject(
+    int projectId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.patch('/projects/$projectId/', data: data);
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al actualizar proyecto: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al actualizar proyecto: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> aiGenerateFullSrs(
+    int projectId, {
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/projects/$projectId/ai-generate-full/',
+        data: data ?? {},
+        options: Options(
+          receiveTimeout: const Duration(seconds: 180),
+          sendTimeout: const Duration(seconds: 60),
+        ),
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al generar SRS completo con IA: ${_extractErrorMessage(e.response?.data ?? e.message)}',
+      );
+    } catch (e) {
+      throw Exception('Error al generar SRS completo con IA: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> aiGenerateSrsSection(
+    int projectId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/projects/$projectId/ai-generate/',
+        data: data,
+        options: Options(
+          receiveTimeout: const Duration(seconds: 120),
+          sendTimeout: const Duration(seconds: 60),
+        ),
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al generar sección con IA: ${_extractErrorMessage(e.response?.data ?? e.message)}',
+      );
+    } catch (e) {
+      throw Exception('Error al generar sección con IA: $e');
+    }
+  }
+
+  static Future<List<dynamic>> getProjectAiHistory(int projectId) async {
+    try {
+      final response = await _dio.get('/projects/$projectId/ai-history/');
+      if (response.data is List) return List<dynamic>.from(response.data);
+      return List<dynamic>.from(response.data['results'] ?? []);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener historial IA: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener historial IA: $e');
+    }
+  }
+
+  static Future<List<dynamic>> getProjectChangelog(
+    int projectId, {
+    String? since,
+    String? until,
+  }) async {
+    try {
+      final query = <String, dynamic>{};
+      if (since != null) query['since'] = since;
+      if (until != null) query['until'] = until;
+
+      final response = await _dio.get(
+        '/projects/$projectId/changelog/',
+        queryParameters: query.isEmpty ? null : query,
+      );
+      if (response.data is List) return List<dynamic>.from(response.data);
+      return List<dynamic>.from(response.data['results'] ?? []);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener changelog: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener changelog: $e');
+    }
+  }
+
+  static Future<List<dynamic>> getProjectComments(int projectId) async {
+    try {
+      final response = await _dio.get('/projects/$projectId/comments/');
+      if (response.data is List) return List<dynamic>.from(response.data);
+      return List<dynamic>.from(response.data['results'] ?? []);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener comentarios: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener comentarios: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> createProjectComment(
+    int projectId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/projects/$projectId/comments/',
+        data: data,
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al crear comentario: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al crear comentario: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> duplicateProject(int projectId) async {
+    try {
+      final response = await _dio.post('/projects/$projectId/duplicate/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al duplicar proyecto: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al duplicar proyecto: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getProjectPreview(int projectId) async {
+    try {
+      final response = await _dio.get('/projects/$projectId/preview/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener vista previa: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener vista previa: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateSrsSection(
+    int projectId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.patch(
+        '/projects/$projectId/srs/section/',
+        data: data,
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al actualizar sección SRS: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al actualizar sección SRS: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> uploadProjectImage(
+    int projectId,
+    File imageFile,
+  ) async {
+    try {
+      final fileName = imageFile.path.split('/').last;
+      final formData = FormData.fromMap({
+        'image': await MultipartFile.fromFile(
+          imageFile.path,
+          filename: fileName,
+        ),
+      });
+      final response = await _dio.post(
+        '/projects/$projectId/upload-image/',
+        data: formData,
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al subir imagen: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al subir imagen: $e');
+    }
+  }
+
+  static Future<List<dynamic>> getProjectVersions(int projectId) async {
+    try {
+      final response = await _dio.get('/projects/$projectId/versions/');
+      if (response.data is List) return List<dynamic>.from(response.data);
+      return List<dynamic>.from(response.data['results'] ?? []);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener versiones: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener versiones: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> createProjectVersion(
+    int projectId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/projects/$projectId/versions/',
+        data: data,
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al crear versión: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al crear versión: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getProjectVersion(
+    int projectId,
+    int versionId,
+  ) async {
+    try {
+      final response = await _dio.get(
+        '/projects/$projectId/versions/$versionId/',
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener versión: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener versión: $e');
+    }
+  }
+
+  // ─── Diagrams ────────────────────────────────────────────────────────────
+
+  static Future<List<dynamic>> getDiagrams() async {
+    try {
+      final response = await _dio.get('/diagrams/');
+      if (response.data is List) return List<dynamic>.from(response.data);
+      return List<dynamic>.from(response.data['results'] ?? []);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener diagramas: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener diagramas: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getDiagram(int id) async {
+    try {
+      final response = await _dio.get('/diagrams/$id/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener diagrama: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener diagrama: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> createDiagram(
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.post('/diagrams/', data: data);
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al crear diagrama: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al crear diagrama: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> patchDiagram(
+    int id,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.patch('/diagrams/$id/', data: data);
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al actualizar diagrama: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al actualizar diagrama: $e');
+    }
+  }
+
+  static Future<void> deleteDiagram(int id) async {
+    try {
+      await _dio.delete('/diagrams/$id/');
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al eliminar diagrama: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al eliminar diagrama: $e');
+    }
+  }
+
+  // ─── Documents ───────────────────────────────────────────────────────────
+
+  static Future<List<dynamic>> getDocuments({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/documents/',
+        queryParameters: queryParameters,
+      );
+      if (response.data is List) return List<dynamic>.from(response.data);
+      return List<dynamic>.from(response.data['results'] ?? []);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener documentos: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener documentos: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getDocument(int documentId) async {
+    try {
+      final response = await _dio.get('/documents/$documentId/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener documento: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener documento: $e');
+    }
+  }
+
+  // ─── Workspaces (extended) ───────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> updateWorkspace(
+    int workspaceId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.put('/workspaces/$workspaceId/', data: data);
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al actualizar workspace: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al actualizar workspace: $e');
+    }
+  }
+
+  // ─── Templates ───────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>?> getDefaultTemplate() async {
+    try {
+      final response = await _dio.get('/templates/default/');
+      return Map<String, dynamic>.from(response.data);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>> getTemplateById(int templateId) async {
+    try {
+      final response = await _dio.get('/templates/$templateId/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener plantilla: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener plantilla: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getTemplateFormConfig(
+    int templateId,
+  ) async {
+    try {
+      final response = await _dio.get('/templates/$templateId/form-config/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener configuración de formulario: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener configuración de formulario: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> generateTemplateDirect(
+    int templateId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/templates/$templateId/generate-direct/',
+        data: data,
+        options: Options(
+          receiveTimeout: const Duration(seconds: 120),
+          sendTimeout: const Duration(seconds: 60),
+        ),
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al generar desde plantilla: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al generar desde plantilla: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getTemplateSchema(
+    int templateId,
+  ) async {
+    try {
+      final response = await _dio.get('/templates/$templateId/schema/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener esquema de plantilla: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener esquema de plantilla: $e');
+    }
+  }
+
+  // ─── Auth – users ─────────────────────────────────────────────────────────
+
+  static Future<List<dynamic>> searchUsers(String query) async {
+    try {
+      final response = await _dio.get(
+        '/auth/users/search/',
+        queryParameters: {'q': query},
+      );
+      if (response.data is List) return List<dynamic>.from(response.data);
+      return List<dynamic>.from(response.data['results'] ?? []);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al buscar usuarios: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al buscar usuarios: $e');
+    }
+  }
+
+  // ─── Public workspace page ────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getPublicWorkspacePage({
+    required String userHandle,
+    required String workspaceSlug,
+  }) async {
+    try {
+      final response = await _dio.get('/u/$userHandle/$workspaceSlug/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener página pública: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener página pública: $e');
+    }
+  }
+
+  // ─── Notifications (extended) ─────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getNotification(
+    int notificationId,
+  ) async {
+    try {
+      final response = await _dio.get('/notifications/$notificationId/');
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener notificación: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener notificación: $e');
     }
   }
 }

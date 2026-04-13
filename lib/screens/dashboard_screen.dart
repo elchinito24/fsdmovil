@@ -9,7 +9,8 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MainAppShell(
-      selectedItem: TopNavItem.workspaces,
+      insideShell: true,
+      selectedItem: TopNavItem.dashboard,
       eyebrow: 'Resumen',
       titleWhite: 'Tu panel ',
       titlePink: 'principal',
@@ -28,29 +29,6 @@ class DashboardScreen extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => context.push('/meeting-mode'),
-                  icon: const Icon(Icons.mic_rounded),
-                  label: const Text(
-                    'Probar Modo Reunión',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: fsdPink),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
       child: Column(
@@ -58,14 +36,20 @@ class DashboardScreen extends StatelessWidget {
         children: [
           const _SectionTitle(title: 'Accesos rápidos'),
           const SizedBox(height: 14),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            mainAxisSpacing: 14,
-            crossAxisSpacing: 14,
-            childAspectRatio: 0.78,
-            children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final cols = w >= 600 ? 3 : 2;
+              final cardW = (w - 16 * (cols - 1)) / cols;
+              final ratio = cardW / (cardW * 1.1);
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: cols,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 16,
+                childAspectRatio: ratio,
+                children: [
               _QuickAccessCard(
                 title: 'Espacios de trabajo',
                 subtitle: 'Administra entornos colaborativos',
@@ -109,6 +93,8 @@ class DashboardScreen extends StatelessWidget {
                 onTap: () => context.push('/team-meetings'),
               ),
             ],
+          );
+            },
           ),
           const SizedBox(height: 24),
           const _SectionTitle(title: 'Flujo recomendado'),
@@ -203,9 +189,9 @@ class _QuickAccessCard extends StatelessWidget {
       onTap: onTap,
       child: Ink(
         decoration: BoxDecoration(
-          color: fsdCardBg,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: fsdBorderColor),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: fsdPink.withOpacity(0.05),
@@ -215,32 +201,32 @@ class _QuickAccessCard extends StatelessWidget {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 52,
-                height: 52,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   color: const Color(0x22E8365D),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(icon, color: fsdPink, size: 26),
+                child: Icon(icon, color: fsdPink, size: 24),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
               Text(
                 title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                   height: 1.2,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
               Expanded(
                 child: Text(
                   subtitle,
@@ -269,11 +255,11 @@ class _InfoTimelineCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
           _TimelineStep(
             title: '1. Crear espacio de trabajo',
@@ -324,7 +310,7 @@ class _TimelineStep extends StatelessWidget {
             child: Column(
               children: [
                 if (!isFirst)
-                  Container(width: 2, height: 14, color: fsdBorderColor)
+                  Container(width: 2, height: 14, color: Theme.of(context).colorScheme.outlineVariant)
                 else
                   const SizedBox(height: 14),
                 Container(
@@ -347,7 +333,7 @@ class _TimelineStep extends StatelessWidget {
                     child: Container(
                       width: 2,
                       margin: const EdgeInsets.only(top: 6),
-                      color: fsdBorderColor,
+                      color: Theme.of(context).colorScheme.outlineVariant,
                     ),
                   ),
               ],
@@ -362,8 +348,8 @@ class _TimelineStep extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                     ),

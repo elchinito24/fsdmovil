@@ -71,14 +71,14 @@ class _WorkspacesScreenState extends State<WorkspacesScreen> {
           context: context,
           builder: (ctx) {
             return AlertDialog(
-              backgroundColor: fsdCardBg,
+              backgroundColor: Theme.of(ctx).colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
-              title: const Text(
+              title: Text(
                 'Eliminar espacio de trabajo',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Theme.of(ctx).colorScheme.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -121,6 +121,8 @@ class _WorkspacesScreenState extends State<WorkspacesScreen> {
 
     try {
       await ApiService.deleteWorkspace(workspace['id']);
+      ApiService.cacheDeletedWorkspace(
+          (workspace['name'] ?? '').toString(), workspace['id'] as int);
 
       if (!mounted) return;
 
@@ -157,6 +159,7 @@ class _WorkspacesScreenState extends State<WorkspacesScreen> {
   @override
   Widget build(BuildContext context) {
     return MainAppShell(
+      insideShell: true,
       selectedItem: TopNavItem.workspaces,
       eyebrow: 'Resumen',
       titleWhite: 'Tus ',
@@ -217,33 +220,21 @@ class _WorkspacesScreenState extends State<WorkspacesScreen> {
                     const SizedBox(height: 16),
                     _CreateWorkspaceTile(onTap: _goToCreateWorkspace),
                   ] else ...[
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: workspaces.length + 1,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 1,
-                            mainAxisSpacing: 16,
-                            crossAxisSpacing: 16,
-                            childAspectRatio: 1.18,
-                          ),
-                      itemBuilder: (context, index) {
-                        if (index == workspaces.length) {
-                          return _CreateWorkspaceTile(
-                            onTap: _goToCreateWorkspace,
+                    Column(
+                      children: [
+                        ...workspaces.asMap().entries.map((entry) {
+                          final workspace = entry.value;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: _WorkspaceCard(
+                              workspace: workspace,
+                              onTap: () =>
+                                  _goToWorkspaceDetail(workspace['id'] as int),
+                              onDelete: () => _deleteWorkspace(workspace),
+                            ),
                           );
-                        }
-
-                        final workspace = workspaces[index];
-
-                        return _WorkspaceCard(
-                          workspace: workspace,
-                          onTap: () =>
-                              _goToWorkspaceDetail(workspace['id'] as int),
-                          onDelete: () => _deleteWorkspace(workspace),
-                        );
-                      },
+                        }),
+                      ],
                     ),
                   ],
                 ],
@@ -283,11 +274,7 @@ class _WorkspaceCard extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(26),
           border: Border.all(color: const Color(0x55E8365D), width: 1.1),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF171922), Color(0xFF13151D)],
-          ),
+          color: Theme.of(context).colorScheme.surface,
           boxShadow: [
             BoxShadow(
               color: fsdPink.withOpacity(0.08),
@@ -297,28 +284,42 @@ class _WorkspaceCard extends StatelessWidget {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 children: [
                   Container(
-                    width: 62,
-                    height: 62,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF232532),
-                      borderRadius: BorderRadius.circular(18),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Icon(
                       Icons.folder_rounded,
                       color: fsdPink,
-                      size: 30,
+                      size: 24,
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontSize: 16,
+                        height: 1.2,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
                   PopupMenuButton<String>(
-                    color: const Color(0xFF1B1E28),
+                    color: Theme.of(context).colorScheme.surface,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -366,18 +367,6 @@ class _WorkspaceCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-              Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  height: 1.15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
               const SizedBox(height: 10),
               Text(
                 description,
@@ -385,39 +374,39 @@ class _WorkspaceCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: fsdTextGrey,
-                  fontSize: 14,
+                  fontSize: 13,
                   height: 1.45,
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   const Icon(
                     Icons.person_outline_rounded,
                     color: fsdTextGrey,
-                    size: 17,
+                    size: 15,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Text(
                     '$members miembro${members == '1' ? '' : 's'}',
                     style: const TextStyle(
                       color: fsdTextGrey,
-                      fontSize: 13.5,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(width: 18),
+                  const SizedBox(width: 16),
                   const Icon(
                     Icons.description_outlined,
                     color: fsdTextGrey,
-                    size: 17,
+                    size: 15,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Text(
                     '$projects proyecto${projects == '1' ? '' : 's'}',
                     style: const TextStyle(
                       color: fsdTextGrey,
-                      fontSize: 13.5,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -442,62 +431,49 @@ class _CreateWorkspaceTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(26),
       onTap: onTap,
       child: Ink(
-        height: 265,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(26),
           border: Border.all(
-            color: const Color(0xFF3A3D48),
+            color: Theme.of(context).colorScheme.outlineVariant,
             width: 1.2,
             strokeAlign: BorderSide.strokeAlignInside,
           ),
-          color: const Color(0xFF13151D),
+          color: Theme.of(context).colorScheme.surface,
         ),
         child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 62,
-                  height: 62,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF21242D),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.16),
-                        blurRadius: 14,
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.add_rounded,
-                    color: fsdTextGrey,
-                    size: 30,
-                  ),
+          padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Crear nuevo',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
+                child: const Icon(
+                  Icons.add_rounded,
+                  color: fsdTextGrey,
+                  size: 24,
                 ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Configura un nuevo espacio de trabajo para tu equipo.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: fsdTextGrey,
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
+              ),
+              const SizedBox(width: 16),
+              const Text(
+                'Crear nuevo espacio de trabajo',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -513,25 +489,25 @@ class _EmptyWorkspacesState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.workspaces_outlined, color: fsdPink, size: 44),
-          SizedBox(height: 14),
+          const Icon(Icons.workspaces_outlined, color: fsdPink, size: 44),
+          const SizedBox(height: 14),
           Text(
             'No hay espacios de trabajo todavía',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
           ),
-          SizedBox(height: 8),
-          Text(
+          const SizedBox(height: 8),
+          const Text(
             'Crea tu primer espacio para comenzar a organizar proyectos y documentos.',
             textAlign: TextAlign.center,
             style: TextStyle(color: fsdTextGrey, fontSize: 14, height: 1.5),
@@ -553,19 +529,19 @@ class _WorkspacesErrorState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         children: [
           const Icon(Icons.error_outline_rounded, color: fsdPink, size: 48),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'No pudimos cargar los workspaces',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),

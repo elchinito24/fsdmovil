@@ -15,6 +15,9 @@ import 'package:fsdmovil/screens/workspaces_screen.dart';
 import 'package:fsdmovil/widgets/main_app_shell.dart';
 import 'package:fsdmovil/widgets/top_nav_menu.dart';
 import 'package:fsdmovil/screens/reviews_screen.dart';
+import 'package:fsdmovil/screens/diagrams_screen.dart';
+import 'package:fsdmovil/screens/diagram_detail_screen.dart';
+import 'package:fsdmovil/screens/diagram_editor_screen.dart';
 import 'package:fsdmovil/screens/history_screen.dart';
 import 'package:fsdmovil/screens/invitations_screen.dart';
 import 'package:fsdmovil/screens/settings_screen.dart';
@@ -56,6 +59,16 @@ Page<void> _slideTransition(
 final appRouter = GoRouter(
   initialLocation: '/splash',
   observers: [routeObserver],
+  redirect: (context, state) {
+    // El deep link fsdmovil://login-callback es manejado por supabase_flutter
+    // internamente. GoRouter no debe procesarlo como ruta.
+    final location = state.uri.toString();
+    if (location.startsWith('fsdmovil://login-callback') ||
+        location.contains('login-callback')) {
+      return '/login';
+    }
+    return null;
+  },
   routes: [
     GoRoute(
       path: '/splash',
@@ -72,36 +85,80 @@ final appRouter = GoRouter(
       pageBuilder: (context, state) =>
           _slideTransition(context, state, const RegisterScreen()),
     ),
-    GoRoute(
-      path: '/dashboard',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const DashboardScreen()),
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) =>
+          PersistentShell(navigationShell: navigationShell),
+      branches: [
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/dashboard',
+            builder: (c, s) => const DashboardScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/workspaces',
+            builder: (c, s) => const WorkspacesScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/:id',
+            builder: (context, state) {
+              final id = int.parse(state.pathParameters['id']!);
+              return WorkspaceDetailScreen(workspaceId: id);
+            },
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/projects',
+            builder: (c, s) => const ProjectsScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/documents',
+            builder: (c, s) => const DocumentsScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/reviews',
+            builder: (c, s) => const ReviewsScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/diagrams',
+            builder: (c, s) => const DiagramsScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/history',
+            builder: (c, s) => const HistoryScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/meeting-mode',
+            builder: (c, s) => const MeetingModeScreen(),
+          ),
+        ]),
+      ],
     ),
+
     GoRoute(
-      path: '/workspaces',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const WorkspacesScreen()),
-    ),
-    GoRoute(
-      path: '/workspace/:id',
+      path: '/create-project',
       pageBuilder: (context, state) {
-        final id = int.parse(state.pathParameters['id']!);
+        final wsId = state.uri.queryParameters['workspaceId'];
         return _slideTransition(
           context,
           state,
-          WorkspaceDetailScreen(workspaceId: id),
+          CreateProjectScreen(
+            preselectedWorkspaceId: wsId != null ? int.tryParse(wsId) : null,
+          ),
         );
       },
-    ),
-    GoRoute(
-      path: '/projects',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const ProjectsScreen()),
-    ),
-    GoRoute(
-      path: '/create-project',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const CreateProjectScreen()),
     ),
     GoRoute(
       path: '/create-workspace',
@@ -123,36 +180,32 @@ final appRouter = GoRouter(
       },
     ),
     GoRoute(
-      path: '/documents',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const DocumentsScreen()),
+      path: '/diagram-editor/:id',
+      pageBuilder: (context, state) {
+        final id = int.parse(state.pathParameters['id']!);
+        final extra = state.extra as Map<String, dynamic>?;
+        return _slideTransition(
+          context,
+          state,
+          DiagramEditorScreen(
+            diagramId: id,
+            initialCode: extra?['code'] as String?,
+            diagramName: extra?['name'] as String?,
+            diagramType: extra?['type'] as String?,
+          ),
+        );
+      },
     ),
     GoRoute(
-      path: '/reviews',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const ReviewsScreen()),
-    ),
-    GoRoute(
-      path: '/diagrams',
-      pageBuilder: (context, state) => _slideTransition(
-        context,
-        state,
-        const _SectionPlaceholderScreen(
-          selectedItem: TopNavItem.diagrams,
-          eyebrow: 'Diagramas',
-          titleWhite: 'Vista de ',
-          titlePink: 'diagramas',
-          description:
-              'Dejaremos esta sección preparada por ahora. Más adelante conectaremos los diagramas reales.',
-          icon: Icons.hub_outlined,
-          badgeText: 'Pendiente',
-        ),
-      ),
-    ),
-    GoRoute(
-      path: '/history',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const HistoryScreen()),
+      path: '/diagrams/:id',
+      pageBuilder: (context, state) {
+        final id = int.parse(state.pathParameters['id']!);
+        return _slideTransition(
+          context,
+          state,
+          DiagramDetailScreen(diagramId: id),
+        );
+      },
     ),
     GoRoute(
       path: '/invitations',
@@ -164,11 +217,7 @@ final appRouter = GoRouter(
       pageBuilder: (context, state) =>
           _slideTransition(context, state, const SettingsScreen()),
     ),
-    GoRoute(
-      path: '/meeting-mode',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const MeetingModeScreen()),
-    ),
+
     GoRoute(
       path: '/team-meetings',
       pageBuilder: (context, state) =>
@@ -236,9 +285,9 @@ class _SectionPlaceholderScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: fsdCardBg,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: fsdBorderColor),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         child: Column(
           children: [
@@ -252,11 +301,11 @@ class _SectionPlaceholderScreen extends StatelessWidget {
               child: Icon(icon, size: 34, color: fsdPink),
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Esta sección será la siguiente que construiremos',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
               ),

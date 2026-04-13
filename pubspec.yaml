@@ -49,14 +49,27 @@ dependencies:
   # Generación de documentos Word
   docs_gee: ^1.2.2
 
+  # Generación de PDF con estilo completo
+  pdf: ^3.11.0
+  printing: ^5.13.0
+
   # Almacenamiento local (token JWT)
   shared_preferences: ^2.5.3
 
   #Agregar la grabacion y permiso
-  record: ^6.0.0 
+  record: ^6.0.0
 
-#reunion en equipo
+  # OAuth social login (Google, GitHub, Microsoft)
+  supabase_flutter: ^2.12.2
+
+  # Íconos de marcas (GitHub, etc.)
+  font_awesome_flutter: ^10.8.0
+
+  #reunion en equipo
   livekit_client: ^2.5.1
+
+  # Render Mermaid diagrams via embedded WebView
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:

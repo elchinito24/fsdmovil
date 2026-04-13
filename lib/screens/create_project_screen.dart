@@ -3,14 +3,12 @@ import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
 
 const _pink = Color(0xFFE8365D);
-const _darkBg = Color(0xFF0F1017);
-const _cardBg = Color(0xFF191B24);
-const _fieldBg = Color(0xFF1E2030);
-const _borderColor = Color(0xFF2A2D3A);
 const _textGrey = Color(0xFF8E8E93);
 
 class CreateProjectScreen extends StatefulWidget {
-  const CreateProjectScreen({super.key});
+  final int? preselectedWorkspaceId;
+
+  const CreateProjectScreen({super.key, this.preselectedWorkspaceId});
 
   @override
   State<CreateProjectScreen> createState() => _CreateProjectScreenState();
@@ -53,7 +51,12 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       setState(() {
         workspaces = ws;
         templates = tpl;
-        if (workspaces.isNotEmpty) selectedWorkspaceId = workspaces.first['id'];
+        if (widget.preselectedWorkspaceId != null &&
+            ws.any((w) => w['id'] == widget.preselectedWorkspaceId)) {
+          selectedWorkspaceId = widget.preselectedWorkspaceId;
+        } else if (workspaces.isNotEmpty) {
+          selectedWorkspaceId = workspaces.first['id'];
+        }
         if (templates.isNotEmpty) selectedTemplateId = templates.first['id'];
         loading = false;
         errorMessage = null;
@@ -97,35 +100,104 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       );
 
       if (projectId != null) {
-        context.go('/editor/$projectId');
+        context.pushReplacement('/editor/$projectId');
       } else {
         context.pop();
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al crear proyecto: $e')),
-      );
+      final errorStr = '$e'.replaceFirst('Exception: ', '');
+      final isConflict = errorStr.toLowerCase().contains('ya existe') ||
+          errorStr.toLowerCase().contains('already') ||
+          errorStr.toLowerCase().contains('unique');
+      final deletedId = isConflict
+          ? await ApiService.findInactiveProjectByName(
+              nameController.text.trim())
+          : null;
+
+      if (deletedId != null) {
+        final reactivate = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: Theme.of(ctx).colorScheme.surface,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text(
+              'Proyecto inactivo',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            content: Text(
+              'Ya existe un proyecto con el nombre "${nameController.text.trim()}" que fue eliminado anteriormente (quedó inactivo). ¿Deseas reactivarlo?',
+              style: const TextStyle(color: _textGrey, height: 1.45),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar',
+                    style: TextStyle(color: _textGrey)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Reactivar'),
+              ),
+            ],
+          ),
+        );
+
+        if (reactivate == true && mounted) {
+          try {
+            await ApiService.partialUpdateProject(deletedId, {
+              'is_active': true,
+              'name': nameController.text.trim(),
+              'code': codeController.text.trim(),
+              'description': descriptionController.text.trim(),
+              'workspace_id': selectedWorkspaceId,
+            });
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Proyecto reactivado correctamente')),
+            );
+            context.pushReplacement('/editor/$deletedId');
+          } catch (reactivateErr) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text('$reactivateErr'
+                      .replaceFirst('Exception: ', ''))),
+            );
+          }
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorStr)),
+        );
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }
   }
 
-  InputDecoration _inputDecoration(String hint) {
+  InputDecoration _inputDecoration(BuildContext context, String hint) {
     return InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(color: _textGrey),
       filled: true,
-      fillColor: _fieldBg,
+      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -148,9 +220,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: _darkBg,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
@@ -178,9 +250,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
-                            color: _cardBg,
+                            color: Theme.of(context).colorScheme.surface,
                             borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: _borderColor),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -263,7 +335,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                           controller: nameController,
                           style: const TextStyle(color: Colors.white),
                           decoration: _inputDecoration(
-                              'Ingrese nombre del proyecto'),
+                              context, 'Ingrese nombre del proyecto'),
                         ),
                         const SizedBox(height: 20),
 
@@ -272,7 +344,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         TextField(
                           controller: codeController,
                           style: const TextStyle(color: Colors.white),
-                          decoration: _inputDecoration('Ej. SIS-002'),
+                          decoration: _inputDecoration(context, 'Ej. SIS-002'),
                         ),
                         const SizedBox(height: 20),
 
@@ -283,7 +355,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                           maxLines: 4,
                           style: const TextStyle(color: Colors.white),
                           decoration:
-                              _inputDecoration('Ingrese una descripción'),
+                              _inputDecoration(context, 'Ingrese una descripción'),
                         ),
                         const SizedBox(height: 20),
 
@@ -293,15 +365,15 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                           padding:
                               const EdgeInsets.symmetric(horizontal: 14),
                           decoration: BoxDecoration(
-                            color: _fieldBg,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: _borderColor),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<int>(
                               value: selectedWorkspaceId,
                               isExpanded: true,
-                              dropdownColor: _cardBg,
+                              dropdownColor: Theme.of(context).colorScheme.surface,
                               style: const TextStyle(color: Colors.white),
                               iconEnabledColor: _textGrey,
                               items: workspaces.map((ws) {
@@ -323,15 +395,15 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                           padding:
                               const EdgeInsets.symmetric(horizontal: 14),
                           decoration: BoxDecoration(
-                            color: _fieldBg,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: _borderColor),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<int>(
                               value: selectedTemplateId,
                               isExpanded: true,
-                              dropdownColor: _cardBg,
+                              dropdownColor: Theme.of(context).colorScheme.surface,
                               style: const TextStyle(color: Colors.white),
                               iconEnabledColor: _textGrey,
                               items: templates.map((tpl) {

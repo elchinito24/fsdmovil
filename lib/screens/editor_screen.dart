@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
 import 'package:fsdmovil/services/auth_service.dart';
 import 'package:fsdmovil/services/srs_realtime_service.dart';
+import 'package:fsdmovil/services/srs_word_service.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF0F1017);
@@ -11,22 +12,6 @@ const _cardBg = Color(0xFF191B24);
 const _fieldBg = Color(0xFF1E2030);
 const _borderColor = Color(0xFF2A2D3A);
 const _textGrey = Color(0xFF8E8E93);
-
-class _FieldSpec {
-  final String key;
-  final String label;
-  final String hint;
-  final int maxLines;
-  final String path;
-
-  const _FieldSpec({
-    required this.key,
-    required this.label,
-    required this.hint,
-    required this.path,
-    this.maxLines = 1,
-  });
-}
 
 class EditorScreen extends StatefulWidget {
   final int projectId;
@@ -38,15 +23,31 @@ class EditorScreen extends StatefulWidget {
 }
 
 class _EditorScreenState extends State<EditorScreen> {
-  String selectedSection = 'portada';
+  // ── Load ──────────────────────────────────────────────────────────────────
   bool loading = true;
   bool saving = false;
   String? errorMessage;
 
-  Map<String, dynamic>? fullResponse;
-  Map<String, dynamic>? srs;
-  String? serverUpdatedAt;
+  // ── Editor mode (Formulario / JSON / AI) ─────────────────────────────────
+  String _editorMode = 'form'; // 'form' | 'json' | 'ai'
 
+  // ── Ownership ─────────────────────────────────────────────────────────────
+  bool _isOwner = true; // assume owner until confirmed otherwise
+  String _previousStatus = 'draft'; // status before sending to review
+
+  // ── Document data ─────────────────────────────────────────────────────────
+  Map<String, dynamic> _docData = {};
+  Map<String, dynamic>? fullResponse;
+  String? serverUpdatedAt;
+  String? _projectCode;
+
+  // ── Template form config ──────────────────────────────────────────────────
+  List<dynamic> _formSections = [];
+
+  // ── Section navigation ────────────────────────────────────────────────────
+  String _selectedSectionId = '';
+
+  // ── Realtime ──────────────────────────────────────────────────────────────
   bool _connected = false;
   bool _syncing = false;
   bool _applyingRemote = false;
@@ -55,248 +56,239 @@ class _EditorScreenState extends State<EditorScreen> {
 
   SrsRealtimeService? _realtimeService;
   Timer? _debounceTimer;
+  Timer? _focusHeartbeat; // re-anuncia el campo activo cada 3s para nuevos usuarios
 
-  final Map<String, TextEditingController> _controllers = {};
-  final Map<String, FocusNode> _focusNodes = {};
+  // ── Save ──────────────────────────────────────────────────────────────────
+  String _saveStatus = 'idle';
+  bool _downloading = false;
+  bool _saveValidationEnabled = true;
+  String? _focusedPath;  // campo actualmente enfocado (para enviar blur manual)
+  String? _focusedLabel; // label del campo enfocado (para re-anunciar al hacer join)
+
+  // ── Presence ──────────────────────────────────────────────────────────────
   final Map<int, PresenceUser> _connectedUsers = {};
   final Map<int, FieldPresence> _fieldPresenceByUser = {};
 
-  final List<Map<String, String>> sections = const [
-    {'value': 'portada', 'label': '1. Portada'},
-    {'value': 'introduccion', 'label': '2. Introducción'},
-    {'value': 'descripcion', 'label': '3. Descripción General'},
-    {'value': 'requisitos', 'label': '4. Requisitos Específicos'},
-  ];
+  // ── Draft (new items not yet committed) ───────────────────────────────────
+  final Set<String> _draftObjectPaths = {};
+  final Set<String> _draftStringPaths = {};
 
-  late final Map<String, List<_FieldSpec>> sectionSpecs;
+  // ── Controllers / FocusNodes keyed by dot-path ───────────────────────────
+  final Map<String, TextEditingController> _ctrl = {};
+  final Map<String, FocusNode> _focusNodes = {};
+
+  List<Map<String, String>> get _sections {
+    final result = <Map<String, String>>[];
+    for (final s in _formSections) {
+      result.add({'value': s['id'] as String, 'label': s['title'] as String});
+    }
+    result.add({'value': '_usuarios', 'label': 'Usuarios'});
+    result.add({'value': '_configuracion', 'label': 'Configuración'});
+    return result;
+  }
 
   @override
   void initState() {
     super.initState();
-    _buildSpecs();
-    _initializeFields();
     loadSrs();
-  }
-
-  void _buildSpecs() {
-    sectionSpecs = {
-      'portada': const [
-        _FieldSpec(
-          key: 'projectName',
-          label: 'Nombre del Proyecto',
-          hint: 'Ingrese nombre del proyecto',
-          path: 'metadata.projectName',
-        ),
-        _FieldSpec(
-          key: 'projectCode',
-          label: 'Código del Proyecto',
-          hint: 'Ingrese código del proyecto',
-          path: 'metadata.projectCode',
-        ),
-        _FieldSpec(
-          key: 'version',
-          label: 'Versión',
-          hint: 'Ingrese versión',
-          path: 'metadata.version',
-        ),
-        _FieldSpec(
-          key: 'date',
-          label: 'Fecha',
-          hint: 'dd/mm/aaaa',
-          path: 'metadata.createdAt',
-        ),
-        _FieldSpec(
-          key: 'author',
-          label: 'Autor(es)',
-          hint: 'Ingrese autor(es)',
-          path: 'metadata.owner',
-        ),
-        _FieldSpec(
-          key: 'organization',
-          label: 'Organización',
-          hint: 'Ingrese organización',
-          path: 'metadata.organization',
-        ),
-      ],
-      'introduccion': const [
-        _FieldSpec(
-          key: 'purpose',
-          label: 'Propósito',
-          hint: 'Ingrese el propósito',
-          path: 'introduction.purpose',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'scope',
-          label: 'Alcance',
-          hint: 'Ingrese el alcance',
-          path: 'introduction.scope',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'overview',
-          label: 'Visión General',
-          hint: 'Ingrese la visión general',
-          path: 'introduction.overview',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'references',
-          label: 'Referencias',
-          hint: 'Una referencia por línea',
-          path: 'introduction.references',
-          maxLines: 5,
-        ),
-        _FieldSpec(
-          key: 'definitions',
-          label: 'Definiciones, Acrónimos y Abreviaturas',
-          hint: 'Formato: Término: Definición',
-          path: 'introduction.definitions',
-          maxLines: 6,
-        ),
-      ],
-      'descripcion': const [
-        _FieldSpec(
-          key: 'productPerspective',
-          label: 'Perspectiva del Producto',
-          hint: 'Ingrese la perspectiva del producto',
-          path: 'overallDescription.productPerspective',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'productFunctions',
-          label: 'Funciones del Producto',
-          hint: 'Ingrese las funciones del producto',
-          path: 'overallDescription.productFunctions',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'userClasses',
-          label: 'Clases de Usuario',
-          hint: 'Formato: id | nombre | descripción | características',
-          path: 'overallDescription.userClasses',
-          maxLines: 6,
-        ),
-        _FieldSpec(
-          key: 'operatingEnvironment',
-          label: 'Entorno Operativo',
-          hint: 'Ingrese el entorno operativo',
-          path: 'overallDescription.operatingEnvironment',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'constraints',
-          label: 'Restricciones',
-          hint: 'Ingrese restricciones',
-          path: 'overallDescription.constraints',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'assumptions',
-          label: 'Suposiciones y Dependencias',
-          hint: 'Ingrese suposiciones y dependencias',
-          path: 'overallDescription.assumptions',
-          maxLines: 4,
-        ),
-      ],
-      'requisitos': const [
-        _FieldSpec(
-          key: 'externalInterfaces',
-          label: 'Interfaces Externas',
-          hint: 'Ingrese las interfaces externas',
-          path: 'specificRequirements.externalInterfaces',
-          maxLines: 4,
-        ),
-        _FieldSpec(
-          key: 'functionalRequirements',
-          label: 'Requisitos Funcionales',
-          hint: 'Un requisito por línea',
-          path: 'specificRequirements.functionalRequirements',
-          maxLines: 6,
-        ),
-        _FieldSpec(
-          key: 'nonFunctionalRequirements',
-          label: 'Requisitos No Funcionales',
-          hint: 'Un requisito por línea',
-          path: 'specificRequirements.nonFunctionalRequirements',
-          maxLines: 6,
-        ),
-        _FieldSpec(
-          key: 'businessRules',
-          label: 'Reglas de Negocio',
-          hint: 'Una regla por línea',
-          path: 'specificRequirements.businessRules',
-          maxLines: 6,
-        ),
-        _FieldSpec(
-          key: 'useCases',
-          label: 'Casos de Uso',
-          hint: 'Un caso de uso por línea',
-          path: 'specificRequirements.useCases',
-          maxLines: 6,
-        ),
-      ],
-    };
-  }
-
-  void _initializeFields() {
-    for (final specs in sectionSpecs.values) {
-      for (final field in specs) {
-        final controller = TextEditingController();
-        final focusNode = FocusNode();
-
-        controller.addListener(() {
-          if (_applyingRemote) return;
-          _scheduleRealtimeSync();
-        });
-
-        focusNode.addListener(() {
-          if (_realtimeService == null) return;
-
-          if (focusNode.hasFocus) {
-            _realtimeService!.sendFieldFocus(
-              path: field.path,
-              label: field.label,
-            );
-          } else {
-            _realtimeService!.sendFieldBlur(path: field.path);
-          }
-        });
-
-        _controllers[field.key] = controller;
-        _focusNodes[field.key] = focusNode;
-      }
-    }
   }
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _focusHeartbeat?.cancel();
     _realtimeService?.disconnect();
-
-    for (final controller in _controllers.values) {
-      controller.dispose();
-    }
-    for (final focusNode in _focusNodes.values) {
-      focusNode.dispose();
-    }
-
+    for (final c in _ctrl.values) c.dispose();
+    for (final n in _focusNodes.values) n.dispose();
     super.dispose();
   }
 
+  // ── Path helpers ──────────────────────────────────────────────────────────
+
+  dynamic _getPath(Map<String, dynamic> data, String path) {
+    dynamic cur = data;
+    for (final p in path.split('.')) {
+      if (cur is Map) {
+        cur = cur[p];
+      } else {
+        return null;
+      }
+    }
+    return cur;
+  }
+
+  void _setPath(Map<String, dynamic> data, String path, dynamic value) {
+    final parts = path.split('.');
+    dynamic cur = data;
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (cur[parts[i]] == null) cur[parts[i]] = <String, dynamic>{};
+      cur = cur[parts[i]];
+    }
+    (cur as Map)[parts.last] = value;
+  }
+
+  Map<String, dynamic> _mergeDefaults(
+    Map<String, dynamic> data,
+    Map<String, dynamic> defaults,
+  ) {
+    final result = Map<String, dynamic>.from(defaults);
+    for (final key in data.keys) {
+      if (data[key] is Map && result[key] is Map) {
+        result[key] = _mergeDefaults(
+          Map<String, dynamic>.from(data[key] as Map),
+          Map<String, dynamic>.from(result[key] as Map),
+        );
+      } else if (data[key] != null) {
+        result[key] = data[key];
+      }
+    }
+    return result;
+  }
+
+  // ── Load ──────────────────────────────────────────────────────────────────
+
   Future<void> loadSrs() async {
     try {
-      final data = await ApiService.getProjectSrs(widget.projectId);
-      final srsData = Map<String, dynamic>.from(data['srs_data'] ?? {});
+      final results = await Future.wait([
+        ApiService.getProjectSrs(widget.projectId),
+        ApiService.getProject(widget.projectId),
+        ApiService.getDefaultTemplate(),
+      ]);
 
-      _applySrsDataToControllers(srsData);
+      final srsResponse = results[0] as Map<String, dynamic>;
+      final projectData = results[1] as Map<String, dynamic>;
+      final template = results[2];
+
+      final formConfig =
+          Map<String, dynamic>.from(template?['form_config'] ?? {});
+      final formSections =
+          List<dynamic>.from(formConfig['sections'] ?? []);
+      final defaultData = Map<String, dynamic>.from(
+        template?['default_data'] ?? _fallbackDefaultData(),
+      );
+
+      final rawSrsData =
+          Map<String, dynamic>.from(srsResponse['srs_data'] ?? {});
+      final docData = _mergeDefaults(rawSrsData, defaultData);
+
+      // Pre-fill metadata from project creation data if SRS fields are blank
+      final metaMap =
+          Map<String, dynamic>.from(docData['metadata'] as Map? ?? {});
+      if ((metaMap['projectName'] as String? ?? '').trim().isEmpty) {
+        final name = (projectData['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) metaMap['projectName'] = name;
+      }
+      if ((metaMap['projectCode'] as String? ?? '').trim().isEmpty) {
+        final code = (projectData['code'] ??
+                projectData['projectCode'] ??
+                projectData['project_code'] ??
+                '')
+            .toString()
+            .trim();
+        if (code.isNotEmpty) metaMap['projectCode'] = code;
+      }
+      if ((metaMap['description'] as String? ?? '').trim().isEmpty) {
+        final desc = (projectData['description'] ?? '').toString().trim();
+        if (desc.isNotEmpty) metaMap['description'] = desc;
+      }
+      docData['metadata'] = metaMap;
+
+      final rawCode = (projectData['code'] ??
+              projectData['projectCode'] ??
+              projectData['project_code'] ??
+              srsResponse['code'] ??
+              srsResponse['projectCode'] ??
+              srsResponse['project_code'])
+          ?.toString()
+          .trim();
+
+      _initControllersForSections(docData, formSections);
+
+      // Fallback: directly update any controller still empty whose path
+      // maps to project name / code / description.
+      final _pName = (projectData['name'] ?? '').toString().trim();
+      final _pCode = (projectData['code'] ??
+              projectData['projectCode'] ??
+              projectData['project_code'] ??
+              '')
+          .toString()
+          .trim();
+      final _pDesc = (projectData['description'] ?? '').toString().trim();
+      for (final entry in _ctrl.entries) {
+        if (entry.value.text.trim().isNotEmpty) continue;
+        final p = entry.key;
+        if ((p.endsWith('.projectName') || p == 'projectName' ||
+                p == 'metadata.projectName') &&
+            _pName.isNotEmpty) {
+          entry.value.text = _pName;
+          _setPath(docData, p, _pName);
+        } else if ((p.endsWith('.projectCode') || p == 'projectCode' ||
+                p == 'metadata.projectCode') &&
+            _pCode.isNotEmpty) {
+          entry.value.text = _pCode;
+          _setPath(docData, p, _pCode);
+        } else if (p.toLowerCase().contains('description') &&
+            _pDesc.isNotEmpty) {
+          entry.value.text = _pDesc;
+          _setPath(docData, p, _pDesc);
+        }
+      }
+
+      // Determine if the current user is the owner of the project.
+      final ownerField = projectData['owner'];
+      final ownerEmail = (ownerField is Map
+              ? ownerField['email']
+              : ownerField)
+          ?.toString()
+          .trim()
+          .toLowerCase() ??
+          '';
+      final currentEmail =
+          (AuthService.userEmail ?? '').trim().toLowerCase();
+      final isOwner =
+          ownerEmail.isNotEmpty && ownerEmail == currentEmail;
+
+      final rawStatus =
+          (projectData['status'] ?? 'draft').toString().trim();
+
+      final isNewSrs = rawSrsData.isEmpty ||
+          (_getPath(
+                    Map<String, dynamic>.from(
+                        srsResponse['srs_data'] ?? {}),
+                    'metadata.projectName',
+                  )?.toString() ??
+                  '')
+              .trim()
+              .isEmpty;
 
       setState(() {
-        fullResponse = data;
-        srs = srsData;
+        _docData = docData;
+        _formSections = formSections;
+        _selectedSectionId = formSections.isNotEmpty
+            ? (formSections.first['id'] as String)
+            : '_usuarios';
+        fullResponse = srsResponse;
+        serverUpdatedAt = srsResponse['updated_at']?.toString();
+        _projectCode =
+            (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
+        _isOwner = isOwner;
+        _previousStatus = rawStatus == 'review' ? 'in_progress' : rawStatus;
         loading = false;
         errorMessage = null;
       });
+
+      // If this is a new project, persist the pre-filled metadata silently
+      if (isNewSrs) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
+          try {
+            await ApiService.updateProjectSrs(widget.projectId, {
+              'srs_data': _docData,
+              'projectCode': _projectCode,
+            });
+          } catch (_) {}
+        });
+      }
 
       await _connectRealtime();
     } catch (e) {
@@ -306,6 +298,85 @@ class _EditorScreenState extends State<EditorScreen> {
       });
     }
   }
+
+  Map<String, dynamic> _fallbackDefaultData() => {
+        'metadata': {
+          'projectName': '',
+          'projectCode': '',
+          'version': '1.0',
+          'owner': '',
+          'organization': '',
+          'createdAt': '',
+          'status': 'draft',
+        },
+        'teamMembers': [],
+        'revisionHistory': [],
+        'approvalHistory': [],
+        'introduction': {
+          'purpose': '',
+          'scope': '',
+          'definitions': [],
+          'references': [],
+          'overview': '',
+        },
+        'overallDescription': {
+          'productPerspective': '',
+          'productFunctions': '',
+          'userClasses': [],
+          'operatingEnvironment': '',
+          'constraints': '',
+          'assumptions': '',
+        },
+        'requirements': {
+          'functional': [],
+          'nonFunctional': [],
+        },
+        'externalInterfaces': {
+          'user': '',
+          'hardware': '',
+          'software': '',
+          'communications': '',
+        },
+        'appendices': [],
+      };
+
+  void _initControllersForSections(
+    Map<String, dynamic> docData,
+    List<dynamic> formSections,
+  ) {
+    for (final c in _ctrl.values) c.dispose();
+    _ctrl.clear();
+    for (final section in formSections) {
+      for (final sub in (section['subsections'] as List? ?? [])) {
+        final type = sub['type'] as String?;
+        if (type == 'array') continue;
+        for (final field in (sub['fields'] as List? ?? [])) {
+          final path = field['path'] as String?;
+          final fieldType = field['type'] as String? ?? 'text';
+          if (path == null || fieldType == 'select') continue;
+          final value = _getPath(docData, path)?.toString() ?? '';
+          final c = TextEditingController(text: value);
+          final capturedPath = path;
+          c.addListener(() {
+            if (_applyingRemote) return;
+            _setPath(_docData, capturedPath, c.text);
+            _scheduleRealtimeSync();
+          });
+          _ctrl[path] = c;
+        }
+      }
+    }
+  }
+
+  void _applyDocData(Map<String, dynamic> newData) {
+    _docData = newData;
+    for (final entry in _ctrl.entries) {
+      final newVal = _getPath(newData, entry.key)?.toString() ?? '';
+      if (entry.value.text != newVal) entry.value.text = newVal;
+    }
+  }
+
+  // ── Realtime ──────────────────────────────────────────────────────────────
 
   Future<void> _connectRealtime() async {
     _realtimeService?.disconnect();
@@ -321,40 +392,36 @@ class _EditorScreenState extends State<EditorScreen> {
       },
       onClose: () {
         if (!mounted) return;
-        setState(() {
-          _connected = false;
-        });
+        setState(() => _connected = false);
       },
       onError: (message) {
         if (!mounted) return;
-        setState(() {
-          _lastRealtimeMessage = message;
-        });
+        setState(() => _lastRealtimeMessage = message);
       },
       onSessionJoined: (payload) {
         if (!mounted) return;
         _applyingRemote = true;
-        _applySrsDataToControllers(payload.srsData);
+        _applyDocData(Map<String, dynamic>.from(payload.srsData));
         _applyingRemote = false;
-
         setState(() {
-          srs = payload.srsData;
           serverUpdatedAt = payload.updatedAt;
           _connectedUsers
             ..clear()
-            ..addEntries(payload.connectedUsers.map((u) => MapEntry(u.id, u)));
+            ..addEntries(
+                payload.connectedUsers.map((u) => MapEntry(u.id, u)));
           _lastRealtimeMessage =
               'Sesión colaborativa iniciada con ${payload.connectedUsers.length} usuario(s)';
         });
       },
       onSync: (payload) {
         if (!mounted) return;
+        // Cancela el debounce pendiente para que el próximo envío
+        // use el nuevo base_updated_at y no genere conflicto.
+        _debounceTimer?.cancel();
         _applyingRemote = true;
-        _applySrsDataToControllers(payload.srsData);
+        _applyDocData(Map<String, dynamic>.from(payload.srsData));
         _applyingRemote = false;
-
         setState(() {
-          srs = payload.srsData;
           serverUpdatedAt = payload.updatedAt;
           _syncing = false;
           _conflictMessage = null;
@@ -365,25 +432,31 @@ class _EditorScreenState extends State<EditorScreen> {
       },
       onConflict: (payload) {
         if (!mounted) return;
+        // Resuelve el conflicto automáticamente: acepta la versión del
+        // servidor y actualiza la base para que el próximo envío sea válido.
+        _debounceTimer?.cancel();
+        _applyingRemote = true;
+        _applyDocData(Map<String, dynamic>.from(payload.serverSrsData));
+        _applyingRemote = false;
         setState(() {
           _syncing = false;
-          _conflictMessage =
-              payload.detail ??
-              'Hubo un conflicto porque el documento cambió en el servidor.';
-          _lastRealtimeMessage = _conflictMessage;
+          serverUpdatedAt = payload.serverUpdatedAt;
+          _conflictMessage = null;
+          _lastRealtimeMessage = payload.updatedBy != null
+              ? 'Sincronizado con cambios de ${payload.updatedBy!.name}'
+              : 'Documento sincronizado';
         });
-
-        _showConflictDialog(
-          serverSrsData: payload.serverSrsData,
-          serverUpdatedAt: payload.serverUpdatedAt,
-          updatedBy: payload.updatedBy?.name,
-        );
       },
       onPresenceJoin: (user) {
         if (!mounted) return;
-        setState(() {
-          _connectedUsers[user.id] = user;
-        });
+        setState(() => _connectedUsers[user.id] = user);
+        // Re-anuncia el campo activo al nuevo usuario para que vea quién lo ocupa
+        if (_focusedPath != null) {
+          _realtimeService?.sendFieldFocus(
+            path: _focusedPath!,
+            label: _focusedLabel ?? _focusedPath!,
+          );
+        }
       },
       onPresenceLeave: (userId) {
         if (!mounted) return;
@@ -397,6 +470,15 @@ class _EditorScreenState extends State<EditorScreen> {
         final myId = AuthService.userId;
         if (myId != null && myId == presence.user.id) return;
 
+        // Race condition: si tenemos el mismo campo activo, cedemos — el otro llegó primero
+        if (_focusedPath != null && _focusedPath == presence.path) {
+          _focusHeartbeat?.cancel();
+          _realtimeService?.sendFieldBlur(path: _focusedPath!);
+          _focusedPath = null;
+          _focusedLabel = null;
+          FocusScope.of(context).unfocus();
+        }
+
         setState(() {
           _connectedUsers[presence.user.id] = presence.user;
           _fieldPresenceByUser[presence.user.id] = presence;
@@ -404,296 +486,297 @@ class _EditorScreenState extends State<EditorScreen> {
       },
       onFieldBlur: (userId, path, mode) {
         if (!mounted) return;
-        setState(() {
-          _fieldPresenceByUser.remove(userId);
-        });
+        setState(() => _fieldPresenceByUser.remove(userId));
       },
     );
 
     await _realtimeService!.connect();
   }
 
-  void _applySrsDataToControllers(Map<String, dynamic> srsData) {
-    final metadata = Map<String, dynamic>.from(srsData['metadata'] ?? {});
-    final introduction = Map<String, dynamic>.from(
-      srsData['introduction'] ?? {},
-    );
-    final overallDescription = Map<String, dynamic>.from(
-      srsData['overallDescription'] ?? {},
-    );
-    final specificRequirements = Map<String, dynamic>.from(
-      srsData['specificRequirements'] ?? {},
-    );
-
-    _setText('projectName', _safeText(metadata['projectName']));
-    _setText(
-      'projectCode',
-      _safeText(
-        metadata['projectCode'],
-        fallback: _safeText(fullResponse?['project_code']),
-      ),
-    );
-    _setText(
-      'version',
-      _safeText(
-        metadata['version'],
-        fallback: _safeText(
-          srsData['version'],
-          fallback: _safeText(fullResponse?['version'], fallback: '1.0'),
-        ),
-      ),
-    );
-    _setText('date', _safeText(metadata['createdAt']));
-    _setText('author', _safeText(metadata['owner']));
-    _setText('organization', _safeText(metadata['organization']));
-
-    _setText('purpose', _safeText(introduction['purpose']));
-    _setText('scope', _safeText(introduction['scope']));
-    _setText('overview', _safeText(introduction['overview']));
-    _setText(
-      'references',
-      _listToMultiline(List.from(introduction['references'] ?? [])),
-    );
-    _setText(
-      'definitions',
-      _definitionsToText(List.from(introduction['definitions'] ?? [])),
-    );
-
-    _setText(
-      'productPerspective',
-      _safeText(overallDescription['productPerspective']),
-    );
-    _setText(
-      'productFunctions',
-      _safeText(overallDescription['productFunctions']),
-    );
-    _setText(
-      'userClasses',
-      _userClassesToText(List.from(overallDescription['userClasses'] ?? [])),
-    );
-    _setText(
-      'operatingEnvironment',
-      _safeText(overallDescription['operatingEnvironment']),
-    );
-    _setText('constraints', _safeText(overallDescription['constraints']));
-    _setText('assumptions', _safeText(overallDescription['assumptions']));
-
-    _setText(
-      'externalInterfaces',
-      _safeText(specificRequirements['externalInterfaces']),
-    );
-    _setText(
-      'functionalRequirements',
-      _listToMultiline(
-        List.from(specificRequirements['functionalRequirements'] ?? []),
-      ),
-    );
-    _setText(
-      'nonFunctionalRequirements',
-      _listToMultiline(
-        List.from(specificRequirements['nonFunctionalRequirements'] ?? []),
-      ),
-    );
-    _setText(
-      'businessRules',
-      _listToMultiline(List.from(specificRequirements['businessRules'] ?? [])),
-    );
-    _setText(
-      'useCases',
-      _listToMultiline(List.from(specificRequirements['useCases'] ?? [])),
-    );
-  }
-
-  void _setText(String key, String value) {
-    final controller = _controllers[key];
-    if (controller == null) return;
-    if (controller.text == value) return;
-    controller.text = value;
-  }
-
-  String _safeText(dynamic value, {String fallback = ''}) {
-    if (value == null) return fallback;
-    final text = value.toString().trim();
-    return text.isEmpty ? fallback : text;
-  }
-
-  String _listToMultiline(List items) {
-    if (items.isEmpty) return '';
-    return items.map((e) => e.toString()).join('\n');
-  }
-
-  List<String> _multilineToList(String value) {
-    return value
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-  }
-
-  String _definitionsToText(List items) {
-    if (items.isEmpty) return '';
-    return items
-        .map((item) {
-          final data = Map<String, dynamic>.from(item);
-          final term = _safeText(data['term']);
-          final definition = _safeText(data['definition']);
-          return '$term: $definition';
-        })
-        .join('\n');
-  }
-
-  List<Map<String, dynamic>> _textToDefinitions(String value) {
-    final lines = value
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    return lines.map((line) {
-      final parts = line.split(':');
-      if (parts.length >= 2) {
-        final term = parts.first.trim();
-        final definition = parts.sublist(1).join(':').trim();
-        return {'term': term, 'definition': definition};
-      }
-      return {'term': line, 'definition': ''};
-    }).toList();
-  }
-
-  String _userClassesToText(List items) {
-    if (items.isEmpty) return '';
-    return items
-        .map((item) {
-          final data = Map<String, dynamic>.from(item);
-          final id = _safeText(data['id']);
-          final name = _safeText(data['name']);
-          final description = _safeText(data['description']);
-          final characteristics = _safeText(data['characteristics']);
-          return '$id | $name | $description | $characteristics';
-        })
-        .join('\n');
-  }
-
-  List<Map<String, dynamic>> _textToUserClasses(String value) {
-    final lines = value
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    return lines.map((line) {
-      final parts = line.split('|').map((e) => e.trim()).toList();
-      return {
-        'id': parts.isNotEmpty ? parts[0] : '',
-        'name': parts.length > 1 ? parts[1] : '',
-        'description': parts.length > 2 ? parts[2] : '',
-        'characteristics': parts.length > 3 ? parts[3] : '',
-      };
-    }).toList();
-  }
-
-  Map<String, dynamic> _buildSrsFromControllers() {
-    return {
-      'metadata': {
-        'projectName': _controllers['projectName']!.text.trim(),
-        'projectCode': _controllers['projectCode']!.text.trim(),
-        'version': _controllers['version']!.text.trim(),
-        'createdAt': _controllers['date']!.text.trim(),
-        'owner': _controllers['author']!.text.trim(),
-        'organization': _controllers['organization']!.text.trim(),
-      },
-      'introduction': {
-        'purpose': _controllers['purpose']!.text.trim(),
-        'scope': _controllers['scope']!.text.trim(),
-        'overview': _controllers['overview']!.text.trim(),
-        'references': _multilineToList(_controllers['references']!.text.trim()),
-        'definitions': _textToDefinitions(
-          _controllers['definitions']!.text.trim(),
-        ),
-      },
-      'overallDescription': {
-        'productPerspective': _controllers['productPerspective']!.text.trim(),
-        'productFunctions': _controllers['productFunctions']!.text.trim(),
-        'userClasses': _textToUserClasses(
-          _controllers['userClasses']!.text.trim(),
-        ),
-        'operatingEnvironment': _controllers['operatingEnvironment']!.text
-            .trim(),
-        'constraints': _controllers['constraints']!.text.trim(),
-        'assumptions': _controllers['assumptions']!.text.trim(),
-      },
-      'specificRequirements': {
-        'externalInterfaces': _controllers['externalInterfaces']!.text.trim(),
-        'functionalRequirements': _multilineToList(
-          _controllers['functionalRequirements']!.text.trim(),
-        ),
-        'nonFunctionalRequirements': _multilineToList(
-          _controllers['nonFunctionalRequirements']!.text.trim(),
-        ),
-        'businessRules': _multilineToList(
-          _controllers['businessRules']!.text.trim(),
-        ),
-        'useCases': _multilineToList(_controllers['useCases']!.text.trim()),
-      },
-    };
-  }
-
   void _scheduleRealtimeSync() {
     if (_applyingRemote) return;
     if (_realtimeService == null || !_realtimeService!.isConnected) return;
-
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 700), () {
-      final updatedSrs = _buildSrsFromControllers();
-      setState(() {
-        _syncing = true;
-        srs = updatedSrs;
-      });
-
+    _debounceTimer = Timer(const Duration(milliseconds: 1200), () {
+      setState(() => _syncing = true);
       _realtimeService!.sendSrsUpdate(
-        srsData: updatedSrs,
+        srsData: _docData,
         baseUpdatedAt: serverUpdatedAt,
       );
     });
   }
 
+  // ── Save ──────────────────────────────────────────────────────────────────
+
   Future<void> saveChanges() async {
-    try {
-      setState(() {
-        saving = true;
-      });
+    // Deselecciona el input y notifica al server que dejamos de editar
+    if (_focusedPath != null) {
+      _focusHeartbeat?.cancel();
+      _realtimeService?.sendFieldBlur(path: _focusedPath!);
+      _focusedPath = null;
+      _focusedLabel = null;
+    }
+    FocusScope.of(context).unfocus();
+    if (_saveValidationEnabled) {
+      final projectName =
+          (_getPath(_docData, 'metadata.projectName') ?? '').toString().trim();
+      if (projectName.isEmpty) {
+        if (!mounted) return;
+        setState(() => _saveStatus = 'error');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('El nombre del proyecto es obligatorio'),
+            backgroundColor: _pink,
+          ),
+        );
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _saveStatus = 'idle');
+        });
+        return;
+      }
+    }
 
-      final updatedSrs = _buildSrsFromControllers();
+    if (_projectCode == null || _projectCode!.trim().isEmpty) {
+      try {
+        final projectData = await ApiService.getProject(widget.projectId);
+        if (!mounted) return;
+        final rawCode = (projectData['code'] ??
+                projectData['projectCode'] ??
+                projectData['project_code'] ??
+                fullResponse?['code'] ??
+                fullResponse?['projectCode'] ??
+                fullResponse?['project_code'])
+            ?.toString()
+            .trim();
+        _projectCode =
+            (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
+      } catch (_) {}
+    }
 
-      await ApiService.updateProjectSrs(widget.projectId, {
-        'srs_data': updatedSrs,
-      });
-
-      setState(() {
-        srs = updatedSrs;
-        _lastRealtimeMessage = 'Cambios guardados manualmente';
-      });
-
+    if (_projectCode == null || _projectCode!.trim().isEmpty) {
       if (!mounted) return;
-
+      setState(() => _saveStatus = 'error');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cambios guardados correctamente'),
+          content: Text(
+            'No se pudo obtener el código del proyecto. Intente recargar.',
+          ),
           backgroundColor: _pink,
         ),
       );
-    } catch (e) {
-      if (!mounted) return;
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
+      });
+      return;
+    }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al guardar: $e'), backgroundColor: _pink),
-      );
-    } finally {
+    setState(() {
+      saving = true;
+      _saveStatus = 'saving';
+    });
+
+    try {
+      await ApiService.updateProjectSrs(widget.projectId, {
+        'srs_data': _docData,
+        'projectCode': _projectCode,
+      });
       if (!mounted) return;
       setState(() {
-        saving = false;
+        _saveStatus = 'saved';
+        _lastRealtimeMessage = 'Cambios guardados manualmente';
       });
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saveStatus = 'error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al guardar: $e'),
+          backgroundColor: _pink,
+        ),
+      );
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
+      });
+    } finally {
+      if (mounted) setState(() => saving = false);
     }
+  }
+
+  // ── Send for review (non-owners) ──────────────────────────────────────────
+
+  Future<void> sendForReview() async {
+    if (saving) return;
+
+    // Confirm with user.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _cardBg,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text(
+          'Enviar a revisión',
+          style:
+              TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          'Tus cambios se guardarán como una versión nueva y el dueño del proyecto podrá aceptarlos o rechazarlos. ¿Continuar?',
+          style: TextStyle(color: _textGrey, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child:
+                const Text('Cancelar', style: TextStyle(color: _textGrey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _pink,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enviar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() {
+      saving = true;
+      _saveStatus = 'saving';
+    });
+
+    try {
+      // 1. Save a named version snapshot so the owner can restore it if rejected.
+      await ApiService.createProjectVersion(widget.projectId, {
+        'srs_data': _docData,
+        'label': 'Revisión pendiente',
+        'created_by_email': AuthService.userEmail ?? '',
+      });
+
+      // 2. Write the new SRS data live.
+      await ApiService.updateProjectSrs(widget.projectId, {
+        'srs_data': _docData,
+        'projectCode': _projectCode,
+      });
+
+      // 3. Mark the project as "in review".
+      await ApiService.partialUpdateProject(
+          widget.projectId, {'status': 'review'});
+
+      if (!mounted) return;
+      setState(() {
+        _saveStatus = 'saved';
+        _lastRealtimeMessage = 'Enviado a revisión';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cambios enviados a revisión'),
+          backgroundColor: Color(0xFF1BC47D),
+        ),
+      );
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saveStatus = 'error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al enviar: $e'),
+          backgroundColor: _pink,
+        ),
+      );
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _saveStatus = 'idle');
+      });
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _downloadDocx() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final data = fullResponse != null
+          ? {...fullResponse!, 'srs_data': _docData}
+          : {'srs_data': _docData};
+      await SrsWordService.generateAndOpen(data);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al generar documento: $e'),
+          backgroundColor: _pink,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  Widget _buildSaveButton() {
+    Color color;
+    String label;
+    Widget iconWidget;
+
+    if (_saveStatus == 'saving') {
+      color = const Color(0xFF55A6FF);
+      label = _isOwner ? 'Guardando' : 'Enviando';
+      iconWidget = SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2, color: color),
+      );
+    } else if (_saveStatus == 'saved') {
+      color = const Color(0xFF1BC47D);
+      label = _isOwner ? 'Guardado' : 'Enviado';
+      iconWidget = const Icon(
+        Icons.check_circle_outline_rounded,
+        size: 16,
+        color: Color(0xFF1BC47D),
+      );
+    } else if (_saveStatus == 'error') {
+      color = _pink;
+      label = 'Error';
+      iconWidget =
+          const Icon(Icons.error_outline_rounded, size: 16, color: _pink);
+    } else if (_isOwner) {
+      color = Colors.white;
+      label = 'Guardar';
+      iconWidget =
+          const Icon(Icons.save_outlined, size: 16, color: Colors.white);
+    } else {
+      color = _pink;
+      label = 'Enviar revisión';
+      iconWidget =
+          const Icon(Icons.send_rounded, size: 16, color: _pink);
+    }
+
+    return TextButton.icon(
+      onPressed: saving
+          ? null
+          : _isOwner
+              ? saveChanges
+              : sendForReview,
+      icon: iconWidget,
+      label: Text(
+        label,
+        style: TextStyle(
+          color: saving ? _textGrey : color,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
+    );
   }
 
   Future<void> _showConflictDialog({
@@ -706,313 +789,1807 @@ class _EditorScreenState extends State<EditorScreen> {
     final useServer =
         await showDialog<bool>(
           context: context,
-          builder: (ctx) {
-            return AlertDialog(
-              backgroundColor: _cardBg,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
-              ),
-              title: const Text(
-                'Conflicto detectado',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: _cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            title: const Text(
+              'Conflicto detectado',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+            ),
+            content: Text(
+              updatedBy == null || updatedBy.isEmpty
+                  ? 'Otro cambio llegó desde el servidor antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?'
+                  : '$updatedBy cambió el documento antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?',
+              style: const TextStyle(color: _textGrey, height: 1.45),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text(
+                  'Mantener mi vista',
+                  style: TextStyle(color: _textGrey),
                 ),
               ),
-              content: Text(
-                updatedBy == null || updatedBy.isEmpty
-                    ? 'Otro cambio llegó desde el servidor antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?'
-                    : '$updatedBy cambió el documento antes de que se aplicara tu edición. ¿Quieres cargar la versión más reciente?',
-                style: const TextStyle(color: _textGrey, height: 1.45),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Cargar servidor'),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text(
-                    'Mantener mi vista',
-                    style: TextStyle(color: _textGrey),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _pink,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Cargar servidor'),
-                ),
-              ],
-            );
-          },
+            ],
+          ),
         ) ??
         false;
 
     if (!useServer) return;
 
     _applyingRemote = true;
-    _applySrsDataToControllers(serverSrsData);
+    _applyDocData(serverSrsData);
     _applyingRemote = false;
 
     setState(() {
-      srs = serverSrsData;
       this.serverUpdatedAt = serverUpdatedAt;
       _conflictMessage = null;
       _lastRealtimeMessage = 'Se cargó la versión más reciente del servidor';
     });
   }
 
-  InputDecoration inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: _textGrey),
-      filled: true,
-      fillColor: _fieldBg,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _borderColor),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _pink, width: 1.5),
-      ),
-    );
-  }
+  // ── Decorations ───────────────────────────────────────────────────────────
 
-  Widget buildFieldLabel(String text) {
-    return Text(
-      text,
+  InputDecoration _dec(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: _textGrey),
+        filled: true,
+        fillColor: _fieldBg,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _pink, width: 1.5),
+        ),
+      );
+
+  // ── Dynamic field renderer ────────────────────────────────────────────────
+
+  Widget _buildField(Map<String, dynamic> fieldConfig) {
+    final path = (fieldConfig['path'] ?? fieldConfig['id']) as String;
+    final type = fieldConfig['type'] as String? ?? 'text';
+    final label = fieldConfig['label'] as String? ?? path;
+    final hint = fieldConfig['placeholder'] as String? ?? '';
+    final isRequired = fieldConfig['required'] as bool? ?? false;
+    final rows = fieldConfig['rows'] as int? ?? 1;
+
+    final labelWidget = Text(
+      label + (isRequired ? ' *' : ''),
       style: const TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 14,
         color: Colors.white,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
       ),
     );
-  }
 
-  Widget buildSingleField(_FieldSpec field) {
-    final controller = _controllers[field.key]!;
-    final focusNode = _focusNodes[field.key]!;
+    if (type == 'select') {
+      final options = List<Map<String, dynamic>>.from(
+          fieldConfig['options'] as List? ?? []);
+      final currentValue = _getPath(_docData, path)?.toString();
+      final validValue =
+          options.any((o) => o['value'] == currentValue) ? currentValue : null;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          labelWidget,
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _borderColor),
+            ),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: validValue,
+                isExpanded: true,
+                dropdownColor: _cardBg,
+                iconEnabledColor: _textGrey,
+                hint: Text(
+                  hint.isEmpty ? 'Seleccionar...' : hint,
+                  style: const TextStyle(color: _textGrey),
+                ),
+                style:
+                    const TextStyle(color: Colors.white, fontSize: 14),
+                items: options
+                    .map((opt) => DropdownMenuItem<String>(
+                          value: opt['value'] as String,
+                          child: Text(opt['label'] as String),
+                        ))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _setPath(_docData, path, val));
+                    _scheduleRealtimeSync();
+                  }
+                },
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
-    final activePresence = _fieldPresenceByUser.values.where(
-      (p) => p.path == field.path,
-    );
+    final controller = _ctrl.putIfAbsent(path, () {
+      final c = TextEditingController(
+          text: _getPath(_docData, path)?.toString() ?? '');
+      final capturedPath = path;
+      c.addListener(() {
+        if (_applyingRemote) return;
+        _setPath(_docData, capturedPath, c.text);
+        _scheduleRealtimeSync();
+      });
+      return c;
+    });
+
+    // FocusNode: fuente de verdad para focus/blur — no depende de onTap/onEditingComplete
+    final focusNode = _focusNodes.putIfAbsent(path, () {
+      final node = FocusNode();
+      node.addListener(() {
+        if (!mounted) return;
+        if (node.hasFocus) {
+          _focusedPath = path;
+          _focusedLabel = label;
+          _realtimeService?.sendFieldFocus(path: path, label: label);
+          _focusHeartbeat?.cancel();
+          _focusHeartbeat = Timer.periodic(
+            const Duration(seconds: 3),
+            (_) => _realtimeService?.sendFieldFocus(path: path, label: label),
+          );
+        } else {
+          _focusHeartbeat?.cancel();
+          if (_focusedPath == path) {
+            _focusedPath = null;
+            _focusedLabel = null;
+          }
+          _realtimeService?.sendFieldBlur(path: path);
+        }
+      });
+      return node;
+    });
+
+    final maxLines = (type == 'textarea') ? (rows > 1 ? rows : 4) : 1;
+    final keyboardType =
+        (type == 'email') ? TextInputType.emailAddress : TextInputType.text;
+
+    final activePresence =
+        _fieldPresenceByUser.values.where((p) => p.path == path).toList();
+    final isTakenByOther = activePresence.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        buildFieldLabel(field.label),
+        labelWidget,
         const SizedBox(height: 10),
-        if (activePresence.isNotEmpty) ...[
+        Opacity(
+          opacity: isTakenByOther ? 0.45 : 1.0,
+          child: IgnorePointer(
+            ignoring: isTakenByOther,
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              maxLines: maxLines,
+              keyboardType: keyboardType,
+              style: const TextStyle(color: Colors.white),
+              decoration: _dec(hint.isEmpty ? label : hint),
+            ),
+          ),
+        ),
+        if (isTakenByOther) ...[
+          const SizedBox(height: 6),
           Wrap(
             spacing: 8,
-            runSpacing: 8,
-            children: activePresence.map((presence) {
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+            runSpacing: 6,
+            children: activePresence
+                .map((p) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.edit_rounded,
+                            size: 11, color: _textGrey),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${p.user.name} está modificando este campo',
+                          style: const TextStyle(
+                            color: _textGrey,
+                            fontSize: 11.5,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ))
+                .toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // ── Confirm delete dialog ─────────────────────────────────────────────────
+
+  Future<bool> _confirmDelete(BuildContext ctx, String itemName) async {
+    return await showDialog<bool>(
+          context: ctx,
+          builder: (dCtx) => AlertDialog(
+            backgroundColor: _cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            title: const Text(
+              'Confirmar eliminación',
+              style: TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w800),
+            ),
+            content: Text(
+              '¿Seguro que deseas eliminar "$itemName"? Esta acción no se puede deshacer.',
+              style: const TextStyle(color: _textGrey, height: 1.45),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dCtx, false),
+                child: const Text('Cancelar',
+                    style: TextStyle(color: _textGrey)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dCtx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
                 ),
-                decoration: BoxDecoration(
-                  color: const Color(0x22E8365D),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: const Color(0x55E8365D)),
+                child: const Text('Eliminar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  // ── Object-array subsection ───────────────────────────────────────────────
+
+  Widget _buildObjectArraySubsection(Map<String, dynamic> sub) {
+    final title = sub['title'] as String? ?? '';
+    final path = sub['path'] as String;
+    final itemFields = List<Map<String, dynamic>>.from(
+        sub['itemFields'] as List? ?? []);
+    final titleClean = title.replaceAll(RegExp(r'^[\d\.]+ ?'), '');
+    final addLabel = 'Agregar ${titleClean.toLowerCase()}';
+    final items =
+        List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
+    final hasDraft = _draftObjectPaths.contains(path);
+
+    Map<String, dynamic> emptyItem() {
+      final e = <String, dynamic>{};
+      for (final f in itemFields) e[f['id'] as String] = '';
+      return e;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          titleClean.toUpperCase(),
+          style: const TextStyle(
+            color: _textGrey,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...List.generate(items.length, (i) {
+          final item =
+              Map<String, dynamic>.from(items[i] as Map? ?? {});
+          final isBusy = _fieldPresenceByUser.values
+              .any((p) => p.path.startsWith('$path.$i.'));
+          return _ObjectArrayItemCard(
+            key: ValueKey('$path.$i.${items.length}'),
+            item: item,
+            itemFields: itemFields,
+            index: i,
+            pathPrefix: '$path.$i',
+            fieldPresenceByUser: _fieldPresenceByUser,
+            isDraft: false,
+            isBusy: isBusy,
+            onFocus: (presencePath, label) {
+              _focusedPath = presencePath;
+              _focusedLabel = label;
+              _realtimeService?.sendFieldFocus(
+                  path: presencePath, label: label);
+              _focusHeartbeat?.cancel();
+              _focusHeartbeat = Timer.periodic(
+                const Duration(seconds: 3),
+                (_) => _realtimeService?.sendFieldFocus(
+                    path: presencePath, label: label),
+              );
+            },
+            onBlur: (presencePath) {
+              _focusHeartbeat?.cancel();
+              if (_focusedPath == presencePath) {
+                _focusedPath = null;
+                _focusedLabel = null;
+              }
+              _realtimeService?.sendFieldBlur(path: presencePath);
+            },
+            onChanged: (updated) {
+              setState(() {
+                final list = List<dynamic>.from(
+                    _getPath(_docData, path) as List? ?? []);
+                list[i] = updated;
+                _setPath(_docData, path, list);
+              });
+              _scheduleRealtimeSync();
+            },
+            onRemove: () async {
+              final itemTitle = item['titulo']?.toString() ??
+                  item['nombre']?.toString() ??
+                  item['name']?.toString() ??
+                  'elemento ${i + 1}';
+              final confirm =
+                  await _confirmDelete(context, itemTitle);
+              if (!confirm || !mounted) return;
+              setState(() {
+                final list = List<dynamic>.from(
+                    _getPath(_docData, path) as List? ?? []);
+                list.removeAt(i);
+                _setPath(_docData, path, list);
+              });
+              _scheduleRealtimeSync();
+            },
+          );
+        }),
+        if (hasDraft)
+          _ObjectArrayItemCard(
+            key: ValueKey('$path.draft'),
+            item: emptyItem(),
+            itemFields: itemFields,
+            index: items.length,
+            pathPrefix: '$path.${items.length}',
+            fieldPresenceByUser: <int, FieldPresence>{},
+            isDraft: true,
+            isBusy: false,
+            onFocus: (_, __) {},
+            onBlur: (_) {},
+            onChanged: (_) {},
+            onRemove: () async {},
+            onConfirm: (data) {
+              setState(() {
+                final list = List<dynamic>.from(
+                    _getPath(_docData, path) as List? ?? []);
+                list.add(data);
+                _setPath(_docData, path, list);
+                _draftObjectPaths.remove(path);
+              });
+              _scheduleRealtimeSync();
+            },
+            onCancel: () {
+              setState(() => _draftObjectPaths.remove(path));
+            },
+          ),
+        if (!hasDraft)
+          _buildAddButton(addLabel, () {
+            setState(() => _draftObjectPaths.add(path));
+          }),
+      ],
+    );
+  }
+
+  // ── String-array subsection ───────────────────────────────────────────────
+
+  Widget _buildStringArraySubsection(Map<String, dynamic> sub) {
+    final title = sub['title'] as String? ?? '';
+    final path = sub['path'] as String;
+    final itemLabel = sub['itemLabel'] as String? ?? 'Elemento';
+    final titleClean = title.replaceAll(RegExp(r'^[\d\.]+ ?'), '');
+    final items =
+        List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
+    final hasDraft = _draftStringPaths.contains(path);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          titleClean.toUpperCase(),
+          style: const TextStyle(
+            color: _textGrey,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...List.generate(items.length, (i) {
+          final ctrlKey = '$path.__str__$i';
+          final presencePath = '$path.$i';
+          final fieldLabel = '$itemLabel ${i + 1}';
+
+          final c = _ctrl.putIfAbsent(ctrlKey, () {
+            final ctrl =
+                TextEditingController(text: items[i].toString());
+            ctrl.addListener(() {
+              if (_applyingRemote) return;
+              final list = List<dynamic>.from(
+                  _getPath(_docData, path) as List? ?? []);
+              if (i < list.length) list[i] = ctrl.text;
+              _setPath(_docData, path, list);
+              _scheduleRealtimeSync();
+            });
+            return ctrl;
+          });
+
+          final focusNode = _focusNodes.putIfAbsent(ctrlKey, () {
+            final node = FocusNode();
+            node.addListener(() {
+              if (!mounted) return;
+              if (node.hasFocus) {
+                _focusedPath = presencePath;
+                _focusedLabel = fieldLabel;
+                _realtimeService?.sendFieldFocus(
+                    path: presencePath, label: fieldLabel);
+                _focusHeartbeat?.cancel();
+                _focusHeartbeat = Timer.periodic(
+                  const Duration(seconds: 3),
+                  (_) => _realtimeService?.sendFieldFocus(
+                      path: presencePath, label: fieldLabel),
+                );
+              } else {
+                _focusHeartbeat?.cancel();
+                if (_focusedPath == presencePath) {
+                  _focusedPath = null;
+                  _focusedLabel = null;
+                }
+                _realtimeService?.sendFieldBlur(path: presencePath);
+              }
+            });
+            return node;
+          });
+
+          final activePresence = _fieldPresenceByUser.values
+              .where((p) => p.path == presencePath)
+              .toList();
+          final isTakenByOther = activePresence.isNotEmpty;
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Opacity(
+                        opacity: isTakenByOther ? 0.45 : 1.0,
+                        child: IgnorePointer(
+                          ignoring: isTakenByOther,
+                          child: TextField(
+                            controller: c,
+                            focusNode: focusNode,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: _dec(fieldLabel),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (isTakenByOther)
+                      Tooltip(
+                        message: 'Alguien está editando este elemento',
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _fieldBg,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _borderColor),
+                          ),
+                          child: const Icon(
+                            Icons.lock_outline_rounded,
+                            size: 16,
+                            color: _textGrey,
+                          ),
+                        ),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: () async {
+                          final confirm = await _confirmDelete(
+                              context, fieldLabel);
+                          if (!confirm || !mounted) return;
+                          _focusNodes['$path.__str__$i']?.dispose();
+                          _focusNodes.remove('$path.__str__$i');
+                          _ctrl['$path.__str__$i']?.dispose();
+                          _ctrl.remove('$path.__str__$i');
+                          for (var j = i + 1; j < items.length; j++) {
+                            final oldKey = '$path.__str__$j';
+                            final newKey = '$path.__str__${j - 1}';
+                            final movedCtrl = _ctrl.remove(oldKey);
+                            if (movedCtrl != null) _ctrl[newKey] = movedCtrl;
+                            final movedNode = _focusNodes.remove(oldKey);
+                            if (movedNode != null)
+                              _focusNodes[newKey] = movedNode;
+                          }
+                          setState(() {
+                            final list = List<dynamic>.from(
+                                _getPath(_docData, path) as List? ?? []);
+                            list.removeAt(i);
+                            _setPath(_docData, path, list);
+                          });
+                          _scheduleRealtimeSync();
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _fieldBg,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _borderColor),
+                          ),
+                          child: const Icon(Icons.close_rounded,
+                              size: 16, color: _textGrey),
+                        ),
+                      ),
+                  ],
                 ),
-                child: Text(
-                  '${presence.user.name} está aquí',
-                  style: const TextStyle(
-                    color: _pink,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                if (isTakenByOther) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: activePresence
+                        .map((p) => Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.edit_rounded,
+                                    size: 11, color: _textGrey),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${p.user.name} está modificando este campo',
+                                  style: const TextStyle(
+                                    color: _textGrey,
+                                    fontSize: 11.5,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ))
+                        .toList(),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }),
+        if (hasDraft)
+          Builder(builder: (ctx) {
+            final draftKey = '$path.__draft__';
+            final draftCtrl = _ctrl.putIfAbsent(
+                draftKey, () => TextEditingController());
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: draftCtrl,
+                        autofocus: true,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: _dec('$itemLabel nuevo'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () {
+                        _ctrl['$path.__draft__']?.dispose();
+                        _ctrl.remove('$path.__draft__');
+                        setState(() => _draftStringPaths.remove(path));
+                      },
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _fieldBg,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _borderColor),
+                        ),
+                        child: const Icon(Icons.close_rounded,
+                            size: 16, color: _textGrey),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      final val =
+                          (_ctrl['$path.__draft__']?.text ?? '').trim();
+                      _ctrl['$path.__draft__']?.dispose();
+                      _ctrl.remove('$path.__draft__');
+                      setState(() {
+                        _draftStringPaths.remove(path);
+                        if (val.isNotEmpty) {
+                          final list = List<dynamic>.from(
+                              _getPath(_docData, path) as List? ?? []);
+                          list.add(val);
+                          _setPath(_docData, path, list);
+                        }
+                      });
+                      if (val.isNotEmpty) _scheduleRealtimeSync();
+                    },
+                    icon: const Icon(Icons.check_rounded, size: 16),
+                    label: const Text(
+                      'Guardar',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _pink,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
                   ),
                 ),
-              );
-            }).toList(),
+              ],
+            );
+          })
+        else
+          _buildAddButton('Agregar ${itemLabel.toLowerCase()}', () {
+            setState(() => _draftStringPaths.add(path));
+          }),
+      ],
+    );
+  }
+
+  // ── Add button ────────────────────────────────────────────────────────────
+
+  Widget _buildAddButton(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(
+          color: const Color(0x1AE8365D),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0x55E8365D)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.add_rounded, size: 16, color: _pink),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: _pink,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Section content builder ───────────────────────────────────────────────
+
+  Widget _buildSectionContent() {
+    if (_selectedSectionId == '_usuarios') return _buildUsuariosSection();
+    if (_selectedSectionId == '_configuracion') {
+      return _buildConfiguracionSection();
+    }
+
+    final sectionConfig = _formSections.cast<Map>().firstWhere(
+          (s) => s['id'] == _selectedSectionId,
+          orElse: () => <String, dynamic>{},
+        );
+    if (sectionConfig.isEmpty) return const SizedBox();
+
+    final subsections =
+        List<dynamic>.from(sectionConfig['subsections'] as List? ?? []);
+    final widgets = <Widget>[];
+
+    for (var i = 0; i < subsections.length; i++) {
+      final sub = Map<String, dynamic>.from(subsections[i] as Map);
+      final type = sub['type'] as String?;
+
+      if (i > 0) {
+        widgets.add(const SizedBox(height: 24));
+        widgets.add(const Divider(color: _borderColor, height: 1));
+        widgets.add(const SizedBox(height: 20));
+      }
+
+      if (type == 'array') {
+        final itemType = sub['itemType'] as String?;
+        widgets.add(itemType == 'string'
+            ? _buildStringArraySubsection(sub)
+            : _buildObjectArraySubsection(sub));
+      } else {
+        final subTitle = sub['title'] as String? ?? '';
+        final fields = List<Map<String, dynamic>>.from(
+            sub['fields'] as List? ?? []);
+        widgets.add(Text(
+          subTitle.toUpperCase(),
+          style: const TextStyle(
+            color: _textGrey,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
           ),
-          const SizedBox(height: 8),
-        ],
-        TextField(
-          controller: controller,
-          focusNode: focusNode,
-          maxLines: field.maxLines,
-          style: const TextStyle(color: Colors.white),
-          decoration: inputDecoration(field.hint),
+        ));
+        widgets.add(const SizedBox(height: 12));
+        for (var j = 0; j < fields.length; j++) {
+          widgets.add(_buildField(fields[j]));
+          if (j < fields.length - 1) widgets.add(const SizedBox(height: 16));
+        }
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
+  }
+
+  // ── Usuarios section ──────────────────────────────────────────────────────
+
+  Widget _buildUsuariosSection() {
+    final users = _connectedUsers.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Visualiza los usuarios con acceso y su rol en este documento.',
+          style: TextStyle(color: _textGrey, height: 1.45),
+        ),
+        const SizedBox(height: 16),
+        if (users.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _borderColor),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.person_off_outlined, color: _textGrey, size: 18),
+                SizedBox(width: 10),
+                Text(
+                  'Solo tú tienes esta sesión abierta',
+                  style: TextStyle(color: _textGrey, fontSize: 13.5),
+                ),
+              ],
+            ),
+          )
+        else
+          ...users.map(
+            (user) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: _fieldBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _borderColor),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: _pink.withOpacity(0.18),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _pink.withOpacity(0.4)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          user.name.isNotEmpty
+                              ? user.name[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            color: _pink,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            user.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Activo en esta sesión',
+                            style:
+                                TextStyle(color: _textGrey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0x22E8365D),
+                        borderRadius: BorderRadius.circular(999),
+                        border:
+                            Border.all(color: const Color(0x55E8365D)),
+                      ),
+                      child: const Text(
+                        'EDITOR',
+                        style: TextStyle(
+                          color: _pink,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── Configuración section ─────────────────────────────────────────────────
+
+  Widget _buildConfiguracionSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Personaliza el comportamiento del editor para este documento.',
+          style: TextStyle(color: _textGrey, height: 1.45),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'GUARDADO',
+          style: TextStyle(
+            color: _textGrey,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _fieldBg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _borderColor),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Validación al guardar',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _saveValidationEnabled
+                          ? 'GUARDAR mostrará error si hay campos obligatorios vacíos. El autoguardado nunca valida.'
+                          : 'La validación está desactivada. Se guardará sin verificar campos.',
+                      style: const TextStyle(
+                        color: _textGrey,
+                        fontSize: 12,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Switch(
+                value: _saveValidationEnabled,
+                activeColor: _pink,
+                onChanged: (val) =>
+                    setState(() => _saveValidationEnabled = val),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  List<_FieldSpec> get _currentFields => sectionSpecs[selectedSection] ?? [];
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final connectedUsers = _connectedUsers.values.toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final sections = _sections;
 
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: const Color(0xFF1C1C1E),
       body: SafeArea(
         child: loading
             ? const Center(child: CircularProgressIndicator(color: _pink))
             : errorMessage != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    errorMessage!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              )
-            : Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                    decoration: const BoxDecoration(
-                      border: Border(bottom: BorderSide(color: _borderColor)),
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: () => context.pop(),
-                          icon: const Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            color: Colors.white,
-                          ),
+                  )
+                : Column(
+                    children: [
+                      Container(
+                        padding:
+                            const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                              bottom: BorderSide(color: _borderColor)),
                         ),
-                        const SizedBox(width: 4),
-                        const Expanded(
-                          child: Text(
-                            'Editor colaborativo SRS',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 18,
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => context.pop(),
+                              icon: const Icon(
+                                Icons.arrow_back_ios_new_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
                             ),
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: saving ? null : saveChanges,
-                          icon: saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
+                            const Spacer(),
+                            PopupMenuButton<String>(
+                              color: _cardBg,
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(14),
+                                side: const BorderSide(
+                                    color: _borderColor),
+                              ),
+                              icon: const Icon(
+                                Icons.more_vert_rounded,
+                                color: Colors.white,
+                              ),
+                              onSelected: (value) {
+                                if (value == 'preview') {
+                                  context.push(
+                                      '/preview/${widget.projectId}');
+                                } else if (value == 'download') {
+                                  _downloadDocx();
+                                }
+                              },
+                              itemBuilder: (_) => [
+                                const PopupMenuItem(
+                                  value: 'preview',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.visibility_outlined,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        'Vista previa',
+                                        style: TextStyle(
+                                            color: Colors.white),
+                                      ),
+                                    ],
                                   ),
-                                )
-                              : const Icon(Icons.save_outlined),
-                          label: Text(saving ? 'Guardando...' : 'Guardar'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _pink,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
+                                ),
+                                PopupMenuItem(
+                                  value: 'download',
+                                  enabled: !_downloading,
+                                  child: Row(
+                                    children: [
+                                      _downloading
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child:
+                                                  CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: _pink,
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.download_outlined,
+                                              color: Colors.white,
+                                              size: 18,
+                                            ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        _downloading
+                                            ? 'Generando...'
+                                            : 'Descargar DOCX',
+                                        style: const TextStyle(
+                                            color: Colors.white),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-                      children: [
-                        _RealtimeStatusCard(
-                          connected: _connected,
-                          syncing: _syncing,
-                          lastMessage: _lastRealtimeMessage,
-                          conflictMessage: _conflictMessage,
-                          connectedUsers: connectedUsers,
+                      ),
+                      // ── Secondary controls bar ───────────────────────────
+                      Container(
+                        padding:
+                            const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                              bottom: BorderSide(color: _borderColor)),
                         ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 50,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: sections.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(width: 10),
-                            itemBuilder: (context, index) {
-                              final section = sections[index];
-                              final isSelected =
-                                  selectedSection == section['value'];
-
-                              return InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () {
-                                  setState(() {
-                                    selectedSection = section['value']!;
-                                  });
-                                },
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 220),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? const Color(0x33E8365D)
-                                        : _cardBg,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: isSelected ? _pink : _borderColor,
-                                    ),
-                                  ),
-                                  child: Center(
+                        child: Row(
+                          children: [
+                            // Mode tabs
+                            _EditorModeTab(
+                              label: 'FORMULARIO',
+                              active: _editorMode == 'form',
+                              onTap: () => setState(() => _editorMode = 'form'),
+                            ),
+                            const SizedBox(width: 4),
+                            _EditorModeTab(
+                              label: 'JSON',
+                              active: _editorMode == 'json',
+                              onTap: () => setState(() => _editorMode = 'json'),
+                            ),
+                            const SizedBox(width: 4),
+                            _EditorModeTab(
+                              label: 'AI',
+                              icon: Icons.auto_awesome_rounded,
+                              active: _editorMode == 'ai',
+                              onTap: () => setState(() => _editorMode = 'ai'),
+                            ),
+                            const Spacer(),
+                            // Presence avatars
+                            ...connectedUsers.take(3).map((u) {
+                              final initials = u.name.isNotEmpty
+                                  ? u.name.trim()[0].toUpperCase()
+                                  : '?';
+                              return Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: Tooltip(
+                                  message: u.name,
+                                  child: CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: _pink,
                                     child: Text(
-                                      section['label']!,
-                                      style: TextStyle(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : _textGrey,
-                                        fontWeight: FontWeight.w700,
+                                      initials,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
                                       ),
                                     ),
                                   ),
                                 ),
                               );
-                            },
+                            }),
+                            const SizedBox(width: 6),
+                            _buildSaveButton(),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            if (_focusedPath != null) {
+                              _focusHeartbeat?.cancel();
+                              _realtimeService?.sendFieldBlur(path: _focusedPath!);
+                              _focusedPath = null;
+                              _focusedLabel = null;
+                            }
+                            FocusScope.of(context).unfocus();
+                          },
+                          behavior: HitTestBehavior.translucent,
+                          child: _editorMode == 'json'
+                              ? _JsonView(data: _docData)
+                              : _editorMode == 'ai'
+                                  ? _AiView(
+                                      projectId: widget.projectId,
+                                      onApplied: () async {
+                                        setState(() => loading = true);
+                                        await loadSrs();
+                                      },
+                                    )
+                                  : ListView(
+                          padding: const EdgeInsets.fromLTRB(
+                              20, 18, 20, 28),
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                color: _cardBg,
+                                borderRadius:
+                                    BorderRadius.circular(14),
+                                border:
+                                    Border.all(color: _borderColor),
+                              ),
+                              padding:
+                                  const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 4),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedSectionId
+                                          .isNotEmpty
+                                      ? _selectedSectionId
+                                      : null,
+                                  isExpanded: true,
+                                  dropdownColor: _cardBg,
+                                  iconEnabledColor: _textGrey,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  items: sections
+                                      .map((s) =>
+                                          DropdownMenuItem<String>(
+                                            value: s['value'],
+                                            child:
+                                                Text(s['label']!),
+                                          ))
+                                      .toList(),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      setState(() =>
+                                          _selectedSectionId =
+                                              val);
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Container(
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                color: _cardBg,
+                                borderRadius:
+                                    BorderRadius.circular(22),
+                                border:
+                                    Border.all(color: _borderColor),
+                              ),
+                              child: _buildSectionContent(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    ],
+                  ),
+      ),
+    );
+  }
+}
+
+// ── Object array item card ────────────────────────────────────────────────────
+
+class _ObjectArrayItemCard extends StatefulWidget {
+  final Map<String, dynamic> item;
+  final List<Map<String, dynamic>> itemFields;
+  final int index;
+  final String pathPrefix;
+  final Map<int, FieldPresence> fieldPresenceByUser;
+  final void Function(String path, String label) onFocus;
+  final void Function(String path) onBlur;
+  final ValueChanged<Map<String, dynamic>> onChanged;
+  final Future<void> Function() onRemove;
+  final bool isDraft;
+  final bool isBusy;
+  final void Function(Map<String, dynamic>)? onConfirm;
+  final VoidCallback? onCancel;
+
+  const _ObjectArrayItemCard({
+    super.key,
+    required this.item,
+    required this.itemFields,
+    required this.index,
+    required this.pathPrefix,
+    required this.fieldPresenceByUser,
+    required this.onFocus,
+    required this.onBlur,
+    required this.onChanged,
+    required this.onRemove,
+    this.isDraft = false,
+    this.isBusy = false,
+    this.onConfirm,
+    this.onCancel,
+  });
+
+  @override
+  State<_ObjectArrayItemCard> createState() => _ObjectArrayItemCardState();
+}
+
+class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
+  final Map<String, TextEditingController> _ctrl = {};
+  final Map<String, FocusNode> _focusNodes = {};
+  late Map<String, dynamic> _localData;
+
+  @override
+  void initState() {
+    super.initState();
+    _localData = Map<String, dynamic>.from(widget.item);
+    for (final field in widget.itemFields) {
+      final fid = field['id'] as String;
+      final type = field['type'] as String? ?? 'text';
+      if (type == 'select') continue;
+      final presencePath = '${widget.pathPrefix}.$fid';
+      final label = field['label'] as String? ?? fid;
+
+      final c = TextEditingController(
+          text: _localData[fid]?.toString() ?? '');
+      c.addListener(() {
+        _localData[fid] = c.text;
+        widget.onChanged(Map<String, dynamic>.from(_localData));
+      });
+      _ctrl[fid] = c;
+
+      final node = FocusNode();
+      node.addListener(() {
+        if (!mounted) return;
+        if (node.hasFocus) {
+          widget.onFocus(presencePath, label);
+        } else {
+          widget.onBlur(presencePath);
+        }
+      });
+      _focusNodes[fid] = node;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ObjectArrayItemCard old) {
+    super.didUpdateWidget(old);
+    // Draft items own their local state — never overwrite from parent
+    if (widget.isDraft) return;
+    // When parent re-syncs data (e.g. remote update), refresh non-focused fields
+    if (old.item != widget.item) {
+      for (final field in widget.itemFields) {
+        final fid = field['id'] as String;
+        final type = field['type'] as String? ?? 'text';
+        if (type == 'select') {
+          _localData[fid] = widget.item[fid];
+          continue;
+        }
+        final node = _focusNodes[fid];
+        // Don't overwrite value for the field the user is currently typing in
+        if (node != null && node.hasFocus) continue;
+        final newVal = widget.item[fid]?.toString() ?? '';
+        if (_ctrl[fid]?.text != newVal) {
+          _localData[fid] = widget.item[fid];
+          _ctrl[fid]?.text = newVal;
+        }
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrl.values) c.dispose();
+    for (final n in _focusNodes.values) n.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _dec(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle:
+            const TextStyle(color: _textGrey, fontSize: 13),
+        filled: true,
+        fillColor: _cardBg,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide:
+              const BorderSide(color: _pink, width: 1.5),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _fieldBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: widget.isDraft ? _pink.withOpacity(0.45) : _borderColor,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (widget.isDraft)
+                const Text(
+                  'NUEVO',
+                  style: TextStyle(
+                    color: _pink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                )
+              else
+                Text(
+                  '${widget.index + 1}',
+                  style: const TextStyle(
+                    color: _textGrey,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              const Spacer(),
+              if (widget.isDraft)
+                GestureDetector(
+                  onTap: widget.onCancel,
+                  child: const Icon(Icons.close_rounded,
+                      size: 18, color: _textGrey),
+                )
+              else if (widget.isBusy)
+                Tooltip(
+                  message: 'Alguien está editando este elemento',
+                  child: const Icon(
+                    Icons.lock_outline_rounded,
+                    size: 18,
+                    color: _textGrey,
+                  ),
+                )
+              else
+                GestureDetector(
+                  onTap: () => widget.onRemove(),
+                  child: const Icon(Icons.close_rounded,
+                      size: 18, color: _textGrey),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...widget.itemFields.map((field) {
+            final fid = field['id'] as String;
+            final type = field['type'] as String? ?? 'text';
+            final label = field['label'] as String? ?? fid;
+            final hint = field['placeholder'] as String? ?? '';
+            final rows = field['rows'] as int? ?? 1;
+            final presencePath = '${widget.pathPrefix}.$fid';
+
+            final activePresence = widget.fieldPresenceByUser.values
+                .where((p) => p.path == presencePath)
+                .toList();
+            final isTakenByOther = activePresence.isNotEmpty;
+
+            Widget fieldWidget;
+            if (type == 'select') {
+              final options = List<Map<String, dynamic>>.from(
+                  field['options'] as List? ?? []);
+              final cur = _localData[fid]?.toString();
+              final valid =
+                  options.any((o) => o['value'] == cur) ? cur : null;
+              fieldWidget = Opacity(
+                opacity: isTakenByOther ? 0.45 : 1.0,
+                child: IgnorePointer(
+                  ignoring: isTakenByOther,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: _cardBg,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _borderColor),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: valid,
+                        isExpanded: true,
+                        dropdownColor: _cardBg,
+                        iconEnabledColor: _textGrey,
+                        hint: const Text('Seleccionar...',
+                            style: TextStyle(color: _textGrey)),
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 13),
+                        items: options
+                            .map((opt) => DropdownMenuItem<String>(
+                                  value: opt['value'] as String,
+                                  child: Text(opt['label'] as String),
+                                ))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _localData[fid] = val);
+                            widget.onChanged(
+                                Map<String, dynamic>.from(_localData));
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            } else {
+              final maxLines =
+                  (type == 'textarea') ? (rows > 1 ? rows : 3) : 1;
+              fieldWidget = Opacity(
+                opacity: isTakenByOther ? 0.45 : 1.0,
+                child: IgnorePointer(
+                  ignoring: isTakenByOther,
+                  child: TextField(
+                    controller: _ctrl[fid],
+                    focusNode: _focusNodes[fid],
+                    maxLines: maxLines,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 13),
+                    decoration: _dec(hint.isEmpty ? label : hint),
+                  ),
+                ),
+              );
+            }
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: _textGrey,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  fieldWidget,
+                  if (isTakenByOther) ...[
+                    const SizedBox(height: 5),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: activePresence
+                          .map((p) => Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.edit_rounded,
+                                      size: 11, color: _textGrey),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${p.user.name} está modificando este campo',
+                                    style: const TextStyle(
+                                      color: _textGrey,
+                                      fontSize: 11.5,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                              ))
+                          .toList(),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+          // Guardar button only shown for draft items
+          if (widget.isDraft) ...[
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => widget.onConfirm
+                    ?.call(Map<String, dynamic>.from(_localData)),
+                icon: const Icon(Icons.check_rounded, size: 16),
+                label: const Text(
+                  'Guardar',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pink,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Editor mode tab ───────────────────────────────────────────────────────────
+
+class _EditorModeTab extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _EditorModeTab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: active ? _pink : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? _pink : _borderColor,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 12,
+                color: active ? Colors.white : _textGrey,
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: active ? Colors.white : _textGrey,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── JSON view ─────────────────────────────────────────────────────────────────
+
+class _JsonView extends StatefulWidget {
+  final Map<String, dynamic> data;
+  const _JsonView({required this.data});
+
+  @override
+  State<_JsonView> createState() => _JsonViewState();
+}
+
+class _JsonViewState extends State<_JsonView> {
+  late final ScrollController _scroll;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  String _prettyJson(Map<String, dynamic> data) {
+    final buffer = StringBuffer();
+    _encode(data, buffer, 0);
+    return buffer.toString();
+  }
+
+  void _encode(dynamic value, StringBuffer buf, int indent) {
+    final pad = '  ' * indent;
+    if (value is Map) {
+      buf.write('{\n');
+      final keys = value.keys.toList();
+      for (var i = 0; i < keys.length; i++) {
+        buf.write('$pad  "${keys[i]}": ');
+        _encode(value[keys[i]], buf, indent + 1);
+        if (i < keys.length - 1) buf.write(',');
+        buf.write('\n');
+      }
+      buf.write('$pad}');
+    } else if (value is List) {
+      buf.write('[\n');
+      for (var i = 0; i < value.length; i++) {
+        buf.write('$pad  ');
+        _encode(value[i], buf, indent + 1);
+        if (i < value.length - 1) buf.write(',');
+        buf.write('\n');
+      }
+      buf.write('$pad]');
+    } else if (value is String) {
+      buf.write('"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"');
+    } else {
+      buf.write('$value');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = _prettyJson(widget.data);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _darkBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _borderColor),
+          ),
+          child: SelectableText(
+            text,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12.5,
+              color: Color(0xFFCDD3DE),
+              height: 1.6,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── AI view ───────────────────────────────────────────────────────────────────
+
+class _AiView extends StatefulWidget {
+  final int projectId;
+  final Future<void> Function() onApplied;
+
+  const _AiView({required this.projectId, required this.onApplied});
+
+  @override
+  State<_AiView> createState() => _AiViewState();
+}
+
+class _AiViewState extends State<_AiView> {
+  bool _loading = false;
+  String? _error;
+  String? _success;
+
+  Future<void> _generate() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _success = null;
+    });
+    try {
+      await ApiService.aiGenerateFullSrs(widget.projectId);
+      if (!mounted) return;
+      setState(() {
+        _success = 'SRS generado correctamente con IA. Recargando...';
+        _loading = false;
+      });
+      await widget.onApplied();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: _cardBg,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0x22E8365D),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: _pink,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Generación con IA',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
                           ),
                         ),
-                        const SizedBox(height: 18),
-                        Container(
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                            color: _cardBg,
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: _borderColor),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _sectionTitle(selectedSection),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'Los cambios se sincronizan automáticamente cuando estás conectado.',
-                                style: TextStyle(
-                                  color: _textGrey,
-                                  height: 1.45,
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              ..._buildCurrentSectionFields(),
-                            ],
+                        SizedBox(height: 2),
+                        Text(
+                          'Genera el SRS completo automáticamente',
+                          style: TextStyle(
+                            color: _textGrey,
+                            fontSize: 12.5,
                           ),
                         ),
                       ],
@@ -1020,39 +2597,94 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                 ],
               ),
-      ),
+              const SizedBox(height: 18),
+              const Text(
+                'La IA analizará la información del proyecto y completará todas las secciones del SRS de forma automática.',
+                style: TextStyle(
+                  color: _textGrey,
+                  fontSize: 13.5,
+                  height: 1.5,
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0x22E8365D),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0x55E8365D)),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(
+                      color: _pink,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+              if (_success != null) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0x221BC47D),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0x551BC47D)),
+                  ),
+                  child: Text(
+                    _success!,
+                    style: const TextStyle(
+                      color: Color(0xFF1BC47D),
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _loading ? null : _generate,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _pink,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: _borderColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : const Icon(Icons.auto_awesome_rounded, size: 18),
+                  label: Text(
+                    _loading ? 'Generando...' : 'Generar SRS completo',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
-
-  String _sectionTitle(String sectionValue) {
-    switch (sectionValue) {
-      case 'portada':
-        return 'Portada';
-      case 'introduccion':
-        return 'Introducción';
-      case 'descripcion':
-        return 'Descripción General';
-      case 'requisitos':
-        return 'Requisitos Específicos';
-      default:
-        return 'Sección';
-    }
-  }
-
-  List<Widget> _buildCurrentSectionFields() {
-    final widgets = <Widget>[];
-    final fields = _currentFields;
-
-    for (var i = 0; i < fields.length; i++) {
-      widgets.add(buildSingleField(fields[i]));
-      if (i != fields.length - 1) {
-        widgets.add(const SizedBox(height: 18));
-      }
-    }
-
-    return widgets;
-  }
 }
+
 
 class _RealtimeStatusCard extends StatelessWidget {
   final bool connected;
@@ -1060,6 +2692,7 @@ class _RealtimeStatusCard extends StatelessWidget {
   final String? lastMessage;
   final String? conflictMessage;
   final List<PresenceUser> connectedUsers;
+  final Future<void> Function()? onReconnect;
 
   const _RealtimeStatusCard({
     required this.connected,
@@ -1067,6 +2700,7 @@ class _RealtimeStatusCard extends StatelessWidget {
     required this.lastMessage,
     required this.conflictMessage,
     required this.connectedUsers,
+    this.onReconnect,
   });
 
   @override
@@ -1110,14 +2744,38 @@ class _RealtimeStatusCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                statusText,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
+              Expanded(
+                child: Text(
+                  statusText,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
                 ),
               ),
+              if (!connected && onReconnect != null)
+                TextButton.icon(
+                  onPressed: () => onReconnect!(),
+                  icon: const Icon(
+                    Icons.refresh_rounded,
+                    size: 15,
+                    color: _pink,
+                  ),
+                  label: const Text(
+                    'Reconectar',
+                    style: TextStyle(
+                      color: _pink,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
             ],
           ),
           if (lastMessage != null && lastMessage!.trim().isNotEmpty) ...[
@@ -1154,13 +2812,38 @@ class _RealtimeStatusCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 14),
-          const Text(
-            'Usuarios conectados',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Usuarios conectados',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              if (connectedUsers.isNotEmpty)
+                GestureDetector(
+                  onTap: () => showModalBottomSheet(
+                    context: context,
+                    backgroundColor: _cardBg,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                    ),
+                    builder: (_) => _CollaboratorsSheet(users: connectedUsers),
+                  ),
+                  child: const Text(
+                    'Ver todos',
+                    style: TextStyle(
+                      color: _pink,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 10),
           if (connectedUsers.isEmpty)
@@ -1172,7 +2855,7 @@ class _RealtimeStatusCard extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: connectedUsers.map((user) {
+              children: connectedUsers.take(4).map((user) {
                 return Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -1194,6 +2877,109 @@ class _RealtimeStatusCard extends StatelessWidget {
                 );
               }).toList(),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CollaboratorsSheet extends StatelessWidget {
+  final List<PresenceUser> users;
+
+  const _CollaboratorsSheet({required this.users});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Usuarios en esta sesión',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded, color: _textGrey),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${users.length} usuario${users.length == 1 ? '' : 's'} conectado${users.length == 1 ? '' : 's'} ahora mismo',
+            style: const TextStyle(color: _textGrey, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          ...users.map(
+            (user) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: _pink.withOpacity(0.18),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: _pink.withOpacity(0.4)),
+                    ),
+                    child: Center(
+                      child: Text(
+                        user.name.isNotEmpty
+                            ? user.name[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          color: _pink,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      user.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0x22E8365D),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0x55E8365D)),
+                    ),
+                    child: const Text(
+                      'Activo',
+                      style: TextStyle(
+                        color: _pink,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

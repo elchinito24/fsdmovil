@@ -93,14 +93,14 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
           context: context,
           builder: (ctx) {
             return AlertDialog(
-              backgroundColor: fsdCardBg,
+              backgroundColor: Theme.of(ctx).colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
-              title: const Text(
+              title: Text(
                 'Eliminar proyecto',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Theme.of(ctx).colorScheme.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -143,6 +143,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
     try {
       await ApiService.deleteProject(project['id']);
+      ApiService.cacheDeletedProject(
+          (project['name'] ?? '').toString(), project['id'] as int);
 
       if (!mounted) return;
 
@@ -230,7 +232,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       case 'completed':
         return const Color(0xFF1BC47D);
       default:
-        return Colors.white70;
+        return fsdTextGrey;
     }
   }
 
@@ -277,18 +279,12 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     }
   }
 
-  int _parseProgress(dynamic value) {
-    if (value == null) return 0;
-    if (value is int) return value.clamp(0, 100);
-    if (value is double) return value.round().clamp(0, 100);
-    return int.tryParse(value.toString())?.clamp(0, 100) ?? 0;
-  }
-
   @override
   Widget build(BuildContext context) {
     final visibleProjects = filteredProjects;
 
     return MainAppShell(
+      insideShell: true,
       selectedItem: TopNavItem.projects,
       eyebrow: '',
       titleWhite: 'Proyectos ',
@@ -312,7 +308,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
             backgroundColor: fsdPink,
             foregroundColor: Colors.white,
             elevation: 0,
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: 13),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
             ),
@@ -342,6 +338,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 padding: EdgeInsets.zero,
                 children: [
+                  const SizedBox(height: 20),
                   _ProjectsSearchAndFilter(
                     currentValue: searchQuery,
                     selectedStatus: selectedStatus,
@@ -358,7 +355,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                       });
                     },
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   if (projects.isEmpty)
                     const _EmptyProjectsState()
                   else if (visibleProjects.isEmpty)
@@ -377,7 +374,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                             versionLabel: _formatVersion(project),
                             ownerLabel: _formatOwner(project),
                             updatedAtLabel: _formatDate(project['updated_at']),
-                            progressValue: _parseProgress(project['progress']),
                             onOpenEditor: () =>
                                 _openEditor(project['id'] as int),
                             onOpenPreview: () =>
@@ -428,61 +424,67 @@ class _ProjectsSearchAndFilter extends StatelessWidget {
     }
   }
 
+  Widget _searchField(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+        child: TextField(
+          onChanged: onSearchChanged,
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+          decoration: InputDecoration(
+            hintText: 'Buscar proyectos...',
+            hintStyle: const TextStyle(color: fsdTextGrey),
+            prefixIcon: const Icon(Icons.search_rounded, color: fsdTextGrey),
+            border: InputBorder.none,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+        ),
+      );
+
+  Widget _filterDropdown(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: selectedStatus,
+            dropdownColor: Theme.of(context).colorScheme.surface,
+            iconEnabledColor: Theme.of(context).colorScheme.onSurface,
+            isExpanded: true,
+            itemHeight: 50,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+            items: statusOptions.map((status) {
+              return DropdownMenuItem<String>(
+                value: status,
+                child: Text(_statusLabel(status)),
+              );
+            }).toList(),
+            onChanged: onStatusChanged,
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: fsdCardBg,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: fsdBorderColor),
-          ),
-          child: TextField(
-            onChanged: onSearchChanged,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              hintText: 'Buscar proyectos...',
-              hintStyle: TextStyle(color: fsdTextGrey),
-              prefixIcon: Icon(Icons.search_rounded, color: fsdTextGrey),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          decoration: BoxDecoration(
-            color: fsdCardBg,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: fsdBorderColor),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: selectedStatus,
-              dropdownColor: const Color(0xFF1B1E28),
-              iconEnabledColor: Colors.white,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-              items: statusOptions.map((status) {
-                return DropdownMenuItem<String>(
-                  value: status,
-                  child: Text(_statusLabel(status)),
-                );
-              }).toList(),
-              onChanged: onStatusChanged,
-            ),
-          ),
-        ),
-      ],
+    return SizedBox(
+      height: 52,
+      child: Row(
+        children: [
+          Expanded(flex: 3, child: _searchField(context)),
+          const SizedBox(width: 10),
+          Expanded(flex: 2, child: _filterDropdown(context)),
+        ],
+      ),
     );
   }
 }
@@ -495,7 +497,6 @@ class _ProjectCard extends StatelessWidget {
   final String versionLabel;
   final String ownerLabel;
   final String updatedAtLabel;
-  final int progressValue;
   final VoidCallback onOpenEditor;
   final VoidCallback onOpenPreview;
   final VoidCallback onDelete;
@@ -508,7 +509,6 @@ class _ProjectCard extends StatelessWidget {
     required this.versionLabel,
     required this.ownerLabel,
     required this.updatedAtLabel,
-    required this.progressValue,
     required this.onOpenEditor,
     required this.onOpenPreview,
     required this.onDelete,
@@ -539,9 +539,9 @@ class _ProjectCard extends StatelessWidget {
       onTap: onOpenEditor,
       child: Ink(
         decoration: BoxDecoration(
-          color: fsdCardBg,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: fsdBorderColor),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: fsdPink.withOpacity(0.05),
@@ -562,8 +562,8 @@ class _ProjectCard extends StatelessWidget {
                       name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
                         height: 1.15,
@@ -591,7 +591,7 @@ class _ProjectCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   PopupMenuButton<String>(
-                    color: const Color(0xFF1B1E28),
+                    color: Theme.of(context).colorScheme.surface,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -600,56 +600,41 @@ class _ProjectCard extends StatelessWidget {
                       if (value == 'preview') onOpenPreview();
                       if (value == 'delete') onDelete();
                     },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: 'editor',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.edit_note_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              'Abrir editor',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ],
+                    itemBuilder: (context) {
+                      final fg = Theme.of(context).colorScheme.onSurface;
+                      return [
+                        PopupMenuItem(
+                          value: 'editor',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_note_rounded, color: fg, size: 18),
+                              const SizedBox(width: 10),
+                              Text('Abrir editor', style: TextStyle(color: fg)),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: 'preview',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.visibility_outlined,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              'Vista previa',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ],
+                        PopupMenuItem(
+                          value: 'preview',
+                          child: Row(
+                            children: [
+                              Icon(Icons.visibility_outlined, color: fg, size: 18),
+                              const SizedBox(width: 10),
+                              Text('Vista previa', style: TextStyle(color: fg)),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.delete_outline_rounded,
-                              color: fsdPink,
-                              size: 18,
-                            ),
-                            SizedBox(width: 10),
-                            Text('Eliminar', style: TextStyle(color: fsdPink)),
-                          ],
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline_rounded, color: fsdPink, size: 18),
+                              SizedBox(width: 10),
+                              Text('Eliminar', style: TextStyle(color: fsdPink)),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ];
+                    },
                     child: const Padding(
                       padding: EdgeInsets.all(4),
                       child: Icon(Icons.more_vert_rounded, color: fsdTextGrey),
@@ -696,34 +681,6 @@ class _ProjectCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-              const Text(
-                'Progreso',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: progressValue / 100,
-                  minHeight: 9,
-                  backgroundColor: const Color(0xFF2A2D3A),
-                  valueColor: const AlwaysStoppedAnimation<Color>(fsdPink),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '$progressValue%',
-                style: const TextStyle(
-                  color: fsdTextGrey,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -733,9 +690,11 @@ class _ProjectCard extends StatelessWidget {
                       icon: const Icon(Icons.edit_note_rounded, size: 18),
                       label: const Text('Editar SRS'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: fsdBorderColor),
+                        foregroundColor: Theme.of(context).colorScheme.onSurface,
+                        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                         padding: const EdgeInsets.symmetric(vertical: 14),
+                        minimumSize: const Size(0, 50),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -753,6 +712,8 @@ class _ProjectCard extends StatelessWidget {
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 14),
+                        minimumSize: const Size(0, 50),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -779,14 +740,14 @@ class _MiniInfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconColor = color ?? fsdTextGrey;
-    final textColor = color ?? Colors.white70;
+    final textColor = color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: const Color(0xFF151823),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF262A37)),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -819,25 +780,25 @@ class _EmptyProjectsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.inventory_2_outlined, color: fsdPink, size: 44),
-          SizedBox(height: 14),
+          const Icon(Icons.inventory_2_outlined, color: fsdPink, size: 44),
+          const SizedBox(height: 14),
           Text(
             'No se encontraron proyectos',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
           ),
-          SizedBox(height: 8),
-          Text(
+          const SizedBox(height: 8),
+          const Text(
             'Crea tu primer proyecto para empezar a trabajar en tu documentación SRS.',
             textAlign: TextAlign.center,
             style: TextStyle(color: fsdTextGrey, fontSize: 14, height: 1.5),
@@ -856,25 +817,25 @@ class _NoSearchResultsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.search_off_rounded, color: fsdPink, size: 42),
-          SizedBox(height: 14),
+          const Icon(Icons.search_off_rounded, color: fsdPink, size: 42),
+          const SizedBox(height: 14),
           Text(
             'No hay resultados con esos filtros',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 19,
               fontWeight: FontWeight.w800,
             ),
           ),
-          SizedBox(height: 8),
-          Text(
+          const SizedBox(height: 8),
+          const Text(
             'Prueba cambiando el texto de búsqueda o selecciona otro estado.',
             textAlign: TextAlign.center,
             style: TextStyle(color: fsdTextGrey, fontSize: 14, height: 1.5),
@@ -896,19 +857,19 @@ class _ProjectsErrorState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         children: [
           const Icon(Icons.error_outline_rounded, color: fsdPink, size: 48),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'No pudimos cargar los proyectos',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
