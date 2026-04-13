@@ -4,8 +4,6 @@ import 'package:fsdmovil/services/auth_service.dart';
 import 'package:fsdmovil/widgets/main_app_shell.dart';
 
 const _pink = Color(0xFFE8365D);
-const _cardBg = Color(0xFF191B24);
-const _borderColor = Color(0xFF2A2D3A);
 const _textGrey = Color(0xFF8E8E93);
 
 class SettingsScreen extends StatefulWidget {

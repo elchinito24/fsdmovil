@@ -68,6 +68,9 @@ dependencies:
   #reunion en equipo
   livekit_client: ^2.5.1
 
+  # Render Mermaid diagrams via embedded WebView
+  webview_flutter: ^4.10.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

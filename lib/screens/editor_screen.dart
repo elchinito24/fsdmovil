@@ -28,6 +28,9 @@ class _EditorScreenState extends State<EditorScreen> {
   bool saving = false;
   String? errorMessage;
 
+  // ── Editor mode (Formulario / JSON / AI) ─────────────────────────────────
+  String _editorMode = 'form'; // 'form' | 'json' | 'ai'
+
   // ── Ownership ─────────────────────────────────────────────────────────────
   bool _isOwner = true; // assume owner until confirmed otherwise
   String _previousStatus = 'draft'; // status before sending to review
@@ -168,6 +171,28 @@ class _EditorScreenState extends State<EditorScreen> {
           Map<String, dynamic>.from(srsResponse['srs_data'] ?? {});
       final docData = _mergeDefaults(rawSrsData, defaultData);
 
+      // Pre-fill metadata from project creation data if SRS fields are blank
+      final metaMap =
+          Map<String, dynamic>.from(docData['metadata'] as Map? ?? {});
+      if ((metaMap['projectName'] as String? ?? '').trim().isEmpty) {
+        final name = (projectData['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) metaMap['projectName'] = name;
+      }
+      if ((metaMap['projectCode'] as String? ?? '').trim().isEmpty) {
+        final code = (projectData['code'] ??
+                projectData['projectCode'] ??
+                projectData['project_code'] ??
+                '')
+            .toString()
+            .trim();
+        if (code.isNotEmpty) metaMap['projectCode'] = code;
+      }
+      if ((metaMap['description'] as String? ?? '').trim().isEmpty) {
+        final desc = (projectData['description'] ?? '').toString().trim();
+        if (desc.isNotEmpty) metaMap['description'] = desc;
+      }
+      docData['metadata'] = metaMap;
+
       final rawCode = (projectData['code'] ??
               projectData['projectCode'] ??
               projectData['project_code'] ??
@@ -178,6 +203,36 @@ class _EditorScreenState extends State<EditorScreen> {
           .trim();
 
       _initControllersForSections(docData, formSections);
+
+      // Fallback: directly update any controller still empty whose path
+      // maps to project name / code / description.
+      final _pName = (projectData['name'] ?? '').toString().trim();
+      final _pCode = (projectData['code'] ??
+              projectData['projectCode'] ??
+              projectData['project_code'] ??
+              '')
+          .toString()
+          .trim();
+      final _pDesc = (projectData['description'] ?? '').toString().trim();
+      for (final entry in _ctrl.entries) {
+        if (entry.value.text.trim().isNotEmpty) continue;
+        final p = entry.key;
+        if ((p.endsWith('.projectName') || p == 'projectName' ||
+                p == 'metadata.projectName') &&
+            _pName.isNotEmpty) {
+          entry.value.text = _pName;
+          _setPath(docData, p, _pName);
+        } else if ((p.endsWith('.projectCode') || p == 'projectCode' ||
+                p == 'metadata.projectCode') &&
+            _pCode.isNotEmpty) {
+          entry.value.text = _pCode;
+          _setPath(docData, p, _pCode);
+        } else if (p.toLowerCase().contains('description') &&
+            _pDesc.isNotEmpty) {
+          entry.value.text = _pDesc;
+          _setPath(docData, p, _pDesc);
+        }
+      }
 
       // Determine if the current user is the owner of the project.
       final ownerField = projectData['owner'];
@@ -196,6 +251,16 @@ class _EditorScreenState extends State<EditorScreen> {
       final rawStatus =
           (projectData['status'] ?? 'draft').toString().trim();
 
+      final isNewSrs = rawSrsData.isEmpty ||
+          (_getPath(
+                    Map<String, dynamic>.from(
+                        srsResponse['srs_data'] ?? {}),
+                    'metadata.projectName',
+                  )?.toString() ??
+                  '')
+              .trim()
+              .isEmpty;
+
       setState(() {
         _docData = docData;
         _formSections = formSections;
@@ -211,6 +276,19 @@ class _EditorScreenState extends State<EditorScreen> {
         loading = false;
         errorMessage = null;
       });
+
+      // If this is a new project, persist the pre-filled metadata silently
+      if (isNewSrs) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
+          try {
+            await ApiService.updateProjectSrs(widget.projectId, {
+              'srs_data': _docData,
+              'projectCode': _projectCode,
+            });
+          } catch (_) {}
+        });
+      }
 
       await _connectRealtime();
     } catch (e) {
@@ -1673,7 +1751,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final sections = _sections;
 
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: const Color(0xFF1C1C1E),
       body: SafeArea(
         child: loading
             ? const Center(child: CircularProgressIndicator(color: _pink))
@@ -1692,7 +1770,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     children: [
                       Container(
                         padding:
-                            const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                            const EdgeInsets.fromLTRB(12, 8, 12, 8),
                         decoration: const BoxDecoration(
                           border: Border(
                               bottom: BorderSide(color: _borderColor)),
@@ -1704,20 +1782,12 @@ class _EditorScreenState extends State<EditorScreen> {
                               icon: const Icon(
                                 Icons.arrow_back_ios_new_rounded,
                                 color: Colors.white,
+                                size: 20,
                               ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
                             ),
-                            const Expanded(
-                              child: Text(
-                                'Editor SRS',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 17,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            _buildSaveButton(),
+                            const Spacer(),
                             PopupMenuButton<String>(
                               color: _cardBg,
                               shape: RoundedRectangleBorder(
@@ -1793,6 +1863,65 @@ class _EditorScreenState extends State<EditorScreen> {
                           ],
                         ),
                       ),
+                      // ── Secondary controls bar ───────────────────────────
+                      Container(
+                        padding:
+                            const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                              bottom: BorderSide(color: _borderColor)),
+                        ),
+                        child: Row(
+                          children: [
+                            // Mode tabs
+                            _EditorModeTab(
+                              label: 'FORMULARIO',
+                              active: _editorMode == 'form',
+                              onTap: () => setState(() => _editorMode = 'form'),
+                            ),
+                            const SizedBox(width: 4),
+                            _EditorModeTab(
+                              label: 'JSON',
+                              active: _editorMode == 'json',
+                              onTap: () => setState(() => _editorMode = 'json'),
+                            ),
+                            const SizedBox(width: 4),
+                            _EditorModeTab(
+                              label: 'AI',
+                              icon: Icons.auto_awesome_rounded,
+                              active: _editorMode == 'ai',
+                              onTap: () => setState(() => _editorMode = 'ai'),
+                            ),
+                            const Spacer(),
+                            // Presence avatars
+                            ...connectedUsers.take(3).map((u) {
+                              final initials = u.name.isNotEmpty
+                                  ? u.name.trim()[0].toUpperCase()
+                                  : '?';
+                              return Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: Tooltip(
+                                  message: u.name,
+                                  child: CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: _pink,
+                                    child: Text(
+                                      initials,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                            const SizedBox(width: 6),
+                            _buildSaveButton(),
+                          ],
+                        ),
+                      ),
                       Expanded(
                         child: GestureDetector(
                           onTap: () {
@@ -1805,19 +1934,20 @@ class _EditorScreenState extends State<EditorScreen> {
                             FocusScope.of(context).unfocus();
                           },
                           behavior: HitTestBehavior.translucent,
-                          child: ListView(
+                          child: _editorMode == 'json'
+                              ? _JsonView(data: _docData)
+                              : _editorMode == 'ai'
+                                  ? _AiView(
+                                      projectId: widget.projectId,
+                                      onApplied: () async {
+                                        setState(() => loading = true);
+                                        await loadSrs();
+                                      },
+                                    )
+                                  : ListView(
                           padding: const EdgeInsets.fromLTRB(
                               20, 18, 20, 28),
                           children: [
-                            _RealtimeStatusCard(
-                              connected: _connected,
-                              syncing: _syncing,
-                              lastMessage: _lastRealtimeMessage,
-                              conflictMessage: _conflictMessage,
-                              connectedUsers: connectedUsers,
-                              onReconnect: _connectRealtime,
-                            ),
-                            const SizedBox(height: 16),
                             Container(
                               decoration: BoxDecoration(
                                 color: _cardBg,
@@ -2225,6 +2355,332 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
           ],
         ],
       ),
+    );
+  }
+}
+
+// ── Editor mode tab ───────────────────────────────────────────────────────────
+
+class _EditorModeTab extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _EditorModeTab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: active ? _pink : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? _pink : _borderColor,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 12,
+                color: active ? Colors.white : _textGrey,
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: active ? Colors.white : _textGrey,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── JSON view ─────────────────────────────────────────────────────────────────
+
+class _JsonView extends StatefulWidget {
+  final Map<String, dynamic> data;
+  const _JsonView({required this.data});
+
+  @override
+  State<_JsonView> createState() => _JsonViewState();
+}
+
+class _JsonViewState extends State<_JsonView> {
+  late final ScrollController _scroll;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  String _prettyJson(Map<String, dynamic> data) {
+    final buffer = StringBuffer();
+    _encode(data, buffer, 0);
+    return buffer.toString();
+  }
+
+  void _encode(dynamic value, StringBuffer buf, int indent) {
+    final pad = '  ' * indent;
+    if (value is Map) {
+      buf.write('{\n');
+      final keys = value.keys.toList();
+      for (var i = 0; i < keys.length; i++) {
+        buf.write('$pad  "${keys[i]}": ');
+        _encode(value[keys[i]], buf, indent + 1);
+        if (i < keys.length - 1) buf.write(',');
+        buf.write('\n');
+      }
+      buf.write('$pad}');
+    } else if (value is List) {
+      buf.write('[\n');
+      for (var i = 0; i < value.length; i++) {
+        buf.write('$pad  ');
+        _encode(value[i], buf, indent + 1);
+        if (i < value.length - 1) buf.write(',');
+        buf.write('\n');
+      }
+      buf.write('$pad]');
+    } else if (value is String) {
+      buf.write('"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"');
+    } else {
+      buf.write('$value');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = _prettyJson(widget.data);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _darkBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _borderColor),
+          ),
+          child: SelectableText(
+            text,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12.5,
+              color: Color(0xFFCDD3DE),
+              height: 1.6,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── AI view ───────────────────────────────────────────────────────────────────
+
+class _AiView extends StatefulWidget {
+  final int projectId;
+  final Future<void> Function() onApplied;
+
+  const _AiView({required this.projectId, required this.onApplied});
+
+  @override
+  State<_AiView> createState() => _AiViewState();
+}
+
+class _AiViewState extends State<_AiView> {
+  bool _loading = false;
+  String? _error;
+  String? _success;
+
+  Future<void> _generate() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _success = null;
+    });
+    try {
+      await ApiService.aiGenerateFullSrs(widget.projectId);
+      if (!mounted) return;
+      setState(() {
+        _success = 'SRS generado correctamente con IA. Recargando...';
+        _loading = false;
+      });
+      await widget.onApplied();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: _cardBg,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0x22E8365D),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: _pink,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Generación con IA',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Genera el SRS completo automáticamente',
+                          style: TextStyle(
+                            color: _textGrey,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'La IA analizará la información del proyecto y completará todas las secciones del SRS de forma automática.',
+                style: TextStyle(
+                  color: _textGrey,
+                  fontSize: 13.5,
+                  height: 1.5,
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0x22E8365D),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0x55E8365D)),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(
+                      color: _pink,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+              if (_success != null) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0x221BC47D),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0x551BC47D)),
+                  ),
+                  child: Text(
+                    _success!,
+                    style: const TextStyle(
+                      color: Color(0xFF1BC47D),
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _loading ? null : _generate,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _pink,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: _borderColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : const Icon(Icons.auto_awesome_rounded, size: 18),
+                  label: Text(
+                    _loading ? 'Generando...' : 'Generar SRS completo',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

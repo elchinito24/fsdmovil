@@ -15,6 +15,9 @@ import 'package:fsdmovil/screens/workspaces_screen.dart';
 import 'package:fsdmovil/widgets/main_app_shell.dart';
 import 'package:fsdmovil/widgets/top_nav_menu.dart';
 import 'package:fsdmovil/screens/reviews_screen.dart';
+import 'package:fsdmovil/screens/diagrams_screen.dart';
+import 'package:fsdmovil/screens/diagram_detail_screen.dart';
+import 'package:fsdmovil/screens/diagram_editor_screen.dart';
 import 'package:fsdmovil/screens/history_screen.dart';
 import 'package:fsdmovil/screens/invitations_screen.dart';
 import 'package:fsdmovil/screens/settings_screen.dart';
@@ -24,23 +27,6 @@ import 'package:fsdmovil/screens/team_meeting_room_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_ai_result_screen.dart';
 
 final routeObserver = RouteObserver<PageRoute<dynamic>>();
-
-Page<void> _tabTransition(
-  BuildContext context,
-  GoRouterState state,
-  Widget child,
-) => CustomTransitionPage(
-  key: state.pageKey,
-  child: child,
-  transitionDuration: const Duration(milliseconds: 180),
-  reverseTransitionDuration: const Duration(milliseconds: 180),
-  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-    return FadeTransition(
-      opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-      child: child,
-    );
-  },
-);
 
 Page<void> _slideTransition(
   BuildContext context,
@@ -98,36 +84,80 @@ final appRouter = GoRouter(
       pageBuilder: (context, state) =>
           _slideTransition(context, state, const RegisterScreen()),
     ),
-    GoRoute(
-      path: '/dashboard',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const DashboardScreen()),
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) =>
+          PersistentShell(navigationShell: navigationShell),
+      branches: [
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/dashboard',
+            builder: (c, s) => const DashboardScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/workspaces',
+            builder: (c, s) => const WorkspacesScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/:id',
+            builder: (context, state) {
+              final id = int.parse(state.pathParameters['id']!);
+              return WorkspaceDetailScreen(workspaceId: id);
+            },
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/projects',
+            builder: (c, s) => const ProjectsScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/documents',
+            builder: (c, s) => const DocumentsScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/reviews',
+            builder: (c, s) => const ReviewsScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/diagrams',
+            builder: (c, s) => const DiagramsScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/history',
+            builder: (c, s) => const HistoryScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/meeting-mode',
+            builder: (c, s) => const MeetingModeScreen(),
+          ),
+        ]),
+      ],
     ),
+
     GoRoute(
-      path: '/workspaces',
-      pageBuilder: (context, state) =>
-          _tabTransition(context, state, const WorkspacesScreen()),
-    ),
-    GoRoute(
-      path: '/workspace/:id',
+      path: '/create-project',
       pageBuilder: (context, state) {
-        final id = int.parse(state.pathParameters['id']!);
+        final wsId = state.uri.queryParameters['workspaceId'];
         return _slideTransition(
           context,
           state,
-          WorkspaceDetailScreen(workspaceId: id),
+          CreateProjectScreen(
+            preselectedWorkspaceId: wsId != null ? int.tryParse(wsId) : null,
+          ),
         );
       },
-    ),
-    GoRoute(
-      path: '/projects',
-      pageBuilder: (context, state) =>
-          _tabTransition(context, state, const ProjectsScreen()),
-    ),
-    GoRoute(
-      path: '/create-project',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const CreateProjectScreen()),
     ),
     GoRoute(
       path: '/create-workspace',
@@ -149,36 +179,32 @@ final appRouter = GoRouter(
       },
     ),
     GoRoute(
-      path: '/documents',
-      pageBuilder: (context, state) =>
-          _tabTransition(context, state, const DocumentsScreen()),
+      path: '/diagram-editor/:id',
+      pageBuilder: (context, state) {
+        final id = int.parse(state.pathParameters['id']!);
+        final extra = state.extra as Map<String, dynamic>?;
+        return _slideTransition(
+          context,
+          state,
+          DiagramEditorScreen(
+            diagramId: id,
+            initialCode: extra?['code'] as String?,
+            diagramName: extra?['name'] as String?,
+            diagramType: extra?['type'] as String?,
+          ),
+        );
+      },
     ),
     GoRoute(
-      path: '/reviews',
-      pageBuilder: (context, state) =>
-          _tabTransition(context, state, const ReviewsScreen()),
-    ),
-    GoRoute(
-      path: '/diagrams',
-      pageBuilder: (context, state) => _tabTransition(
-        context,
-        state,
-        const _SectionPlaceholderScreen(
-          selectedItem: TopNavItem.diagrams,
-          eyebrow: 'Diagramas',
-          titleWhite: 'Vista de ',
-          titlePink: 'diagramas',
-          description:
-              'Dejaremos esta sección preparada por ahora. Más adelante conectaremos los diagramas reales.',
-          icon: Icons.hub_outlined,
-          badgeText: 'Pendiente',
-        ),
-      ),
-    ),
-    GoRoute(
-      path: '/history',
-      pageBuilder: (context, state) =>
-          _tabTransition(context, state, const HistoryScreen()),
+      path: '/diagrams/:id',
+      pageBuilder: (context, state) {
+        final id = int.parse(state.pathParameters['id']!);
+        return _slideTransition(
+          context,
+          state,
+          DiagramDetailScreen(diagramId: id),
+        );
+      },
     ),
     GoRoute(
       path: '/invitations',
@@ -190,11 +216,7 @@ final appRouter = GoRouter(
       pageBuilder: (context, state) =>
           _slideTransition(context, state, const SettingsScreen()),
     ),
-    GoRoute(
-      path: '/meeting-mode',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const MeetingModeScreen()),
-    ),
+
     GoRoute(
       path: '/team-meetings',
       pageBuilder: (context, state) =>

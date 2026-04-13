@@ -256,6 +256,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final data = filteredProjects;
 
     return MainAppShell(
+      insideShell: true,
       selectedItem: TopNavItem.reviews,
       eyebrow: 'Revisiones',
       titleWhite: 'Gestión de ',

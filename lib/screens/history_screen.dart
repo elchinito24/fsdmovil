@@ -179,6 +179,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final items = filteredHistory;
 
     return MainAppShell(
+      insideShell: true,
       selectedItem: TopNavItem.history,
       eyebrow: 'Seguimiento',
       titleWhite: 'Cambios e ',

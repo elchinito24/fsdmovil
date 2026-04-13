@@ -20,6 +20,7 @@ class MainAppShell extends ConsumerWidget {
   final bool showTopNav;
   final Widget? floatingActionButton;
   final Future<void> Function()? onRefresh;
+  final bool insideShell;
 
   const MainAppShell({
     super.key,
@@ -34,6 +35,7 @@ class MainAppShell extends ConsumerWidget {
     this.showTopNav = true,
     this.floatingActionButton,
     this.onRefresh,
+    this.insideShell = false,
   });
 
   String _buildInitials() {
@@ -60,11 +62,90 @@ class MainAppShell extends ConsumerWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final bgColor = isDark ? const Color(0xFF0F1017) : const Color(0xFFF6F7FB);
-    final headerColor = isDark ? const Color(0xDD12141C) : Colors.white;
+    final bgColor = isDark ? theme.scaffoldBackgroundColor : const Color(0xFFF6F7FB);
+    final headerColor = isDark ? const Color(0xFF2C2C2E) : Colors.white;
     final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
     final titleColor = isDark ? Colors.white : const Color(0xFF151823);
     final descriptionColor = isDark ? fsdTextGrey : const Color(0xFF6B7280);
+
+    // When inside PersistentShell, skip the outer chrome and render only content.
+    if (insideShell) {
+      final listView = ListView(
+        padding: EdgeInsets.fromLTRB(
+          useBodyPadding ? 20 : 0,
+          0,
+          useBodyPadding ? 20 : 0,
+          28,
+        ),
+        children: [
+          if (eyebrow.trim().isNotEmpty) ...[
+            Text(
+              eyebrow.toUpperCase(),
+              style: const TextStyle(
+                color: fsdPink,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2.2,
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+          RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: titleWhite,
+                  style: TextStyle(
+                    color: titleColor,
+                    fontSize: 34,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const TextSpan(text: ''),
+                TextSpan(
+                  text: titlePink,
+                  style: const TextStyle(
+                    color: fsdPink,
+                    fontSize: 34,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            description,
+            style: TextStyle(
+              color: descriptionColor,
+              fontSize: 15,
+              height: 1.5,
+            ),
+          ),
+          if (action != null) ...[
+            const SizedBox(height: 14),
+            action!,
+            const SizedBox(height: 12),
+          ] else ...[
+            const SizedBox(height: 20),
+          ],
+          child,
+        ],
+      );
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        floatingActionButton: floatingActionButton,
+        body: onRefresh != null
+            ? RefreshIndicator(
+                color: fsdPink,
+                onRefresh: onRefresh!,
+                child: listView,
+              )
+            : listView,
+      );
+    }
 
     final initials = _buildInitials();
     final canGoBack = Navigator.of(context).canPop();
@@ -112,19 +193,6 @@ class MainAppShell extends ConsumerWidget {
                       ),
                       const SizedBox(width: 4),
                     ],
-                    const AppLogo(size: 34),
-                    const SizedBox(width: 10),
-                    Text(
-                      'FSD',
-                      style: TextStyle(
-                        color: titleColor,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 22,
-                      ),
-                    ),
-                    const Spacer(),
-                    const _NotificationsBell(),
-                    const SizedBox(width: 6),
                     Container(
                       width: 38,
                       height: 38,
@@ -146,6 +214,8 @@ class MainAppShell extends ConsumerWidget {
                         ),
                       ),
                     ),
+                    const Spacer(),
+                    const _NotificationsBell(),
                     const SizedBox(width: 6),
                     const _UserMenuButton(),
                   ],
@@ -212,11 +282,11 @@ class MainAppShell extends ConsumerWidget {
                       ),
                     ),
                     if (action != null) ...[
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 14),
                       action!,
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
                     ] else ...[
-                      const SizedBox(height: 26),
+                      const SizedBox(height: 20),
                     ],
                     child,
                   ],
@@ -350,7 +420,7 @@ class _UserMenuCard extends ConsumerWidget {
     final preference = ref.watch(themePreferenceProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final cardColor = isDark ? const Color(0xFF191B24) : Colors.white;
+    final cardColor = isDark ? fsdCardBg : Colors.white;
     final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
     final titleColor = isDark ? Colors.white : const Color(0xFF151823);
     final subColor = isDark ? fsdTextGrey : const Color(0xFF6B7280);
@@ -399,7 +469,7 @@ class _UserMenuCard extends ConsumerWidget {
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                 color: isDark
-                    ? const Color(0xFF151823)
+                    ? fsdDarkBg
                     : const Color(0xFFF2F3F8),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: borderColor),
@@ -491,10 +561,10 @@ class _ThemeModeButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
             color: selected
-                ? (isDark ? const Color(0xFF1E2030) : Colors.white)
+                ? (isDark ? const Color(0xFF2C2C2E) : Colors.white)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
-            border: selected ? Border.all(color: fsdBorderColor) : null,
+            border: selected ? Border.all(color: isDark ? fsdBorderColor : const Color(0xFFD1D5DB)) : null,
           ),
           child: Icon(
             icon,
@@ -532,6 +602,176 @@ class _MenuActionTile extends StatelessWidget {
         style: TextStyle(color: color, fontWeight: FontWeight.w700),
       ),
       onTap: onTap,
+    );
+  }
+}
+
+// ── Persistent shell ──────────────────────────────────────────────────────────
+// Keeps the header and nav bar alive across tab switches (StatefulShellRoute).
+
+class PersistentShell extends StatelessWidget {
+  final StatefulNavigationShell navigationShell;
+
+  const PersistentShell({super.key, required this.navigationShell});
+
+  static const _tabItems = [
+    TopNavItem.dashboard,
+    TopNavItem.workspaces,
+    TopNavItem.projects,
+    TopNavItem.documents,
+    TopNavItem.reviews,
+    TopNavItem.diagrams,
+    TopNavItem.history,
+  ];
+
+  String _buildInitials() {
+    final first = (AuthService.firstName ?? '').trim();
+    final last = (AuthService.lastName ?? '').trim();
+    final fromNames = [
+      if (first.isNotEmpty) first[0],
+      if (last.isNotEmpty) last[0],
+    ].join();
+    if (fromNames.isNotEmpty) return fromNames.toUpperCase();
+    final email = AuthService.userEmail ?? '';
+    if (email.trim().isNotEmpty) {
+      return email.trim().substring(0, email.length >= 2 ? 2 : 1).toUpperCase();
+    }
+    return 'AF';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bgColor = isDark ? theme.scaffoldBackgroundColor : const Color(0xFFF6F7FB);
+    final headerColor = isDark ? const Color(0xFF2C2C2E) : Colors.white;
+    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
+    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
+    final initials = _buildInitials();
+
+    final idx = navigationShell.currentIndex;
+    final selected = idx < _tabItems.length ? _tabItems[idx] : null;
+
+    final currentPath = GoRouterState.of(context).uri.path;
+    const _rootPaths = {
+      '/dashboard', '/workspaces', '/projects', '/documents',
+      '/reviews', '/diagrams', '/history', '/meeting-mode',
+    };
+    final isSubPage = !_rootPaths.contains(currentPath);
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: const Alignment(1.0, 0.9),
+            radius: 1.15,
+            colors: [
+              const Color(0x20E8365D),
+              isDark ? Colors.transparent : const Color(0x00E8365D),
+            ],
+            stops: const [0.0, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: headerColor,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Row(
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 250),
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(-0.4, 0),
+                            end: Offset.zero,
+                          ).animate(CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOut,
+                          )),
+                          child: child,
+                        ),
+                      ),
+                      child: isSubPage
+                          ? Row(
+                              key: const ValueKey('back'),
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Volver',
+                                  onPressed: () {
+                                    if (context.canPop()) {
+                                      context.pop();
+                                    } else {
+                                      context.go('/workspaces');
+                                    }
+                                  },
+                                  icon: Icon(
+                                    Icons.arrow_back_ios_new_rounded,
+                                    color: titleColor,
+                                    size: 20,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                            )
+                          : const SizedBox.shrink(key: ValueKey('no-back')),
+                    ),
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFFF2A91D),
+                        border: Border.all(
+                          color: const Color(0xFFF5C76B),
+                          width: 1,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        initials,
+                        style: const TextStyle(
+                          color: Color(0xFF1B1202),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Modo Reunión',
+                      onPressed: () => context.go('/meeting-mode'),
+                      icon: Icon(Icons.mic_rounded, color: titleColor),
+                    ),
+                    const _NotificationsBell(),
+                    const SizedBox(width: 6),
+                    const _UserMenuButton(),
+                  ],
+                ),
+              ),
+              TopNavMenu(selected: selected),
+              const SizedBox(height: 18),
+              Expanded(child: navigationShell),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

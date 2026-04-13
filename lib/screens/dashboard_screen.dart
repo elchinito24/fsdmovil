@@ -9,7 +9,8 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MainAppShell(
-      selectedItem: TopNavItem.workspaces,
+      insideShell: true,
+      selectedItem: TopNavItem.dashboard,
       eyebrow: 'Resumen',
       titleWhite: 'Tu panel ',
       titlePink: 'principal',
@@ -24,29 +25,6 @@ class DashboardScreen extends StatelessWidget {
                   label: 'Nuevo espacio de trabajo',
                   icon: Icons.add_rounded,
                   onTap: () => context.push('/create-workspace'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => context.push('/meeting-mode'),
-                  icon: const Icon(Icons.mic_rounded),
-                  label: const Text(
-                    'Probar Modo Reunión',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: fsdPink),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
                 ),
               ),
             ],

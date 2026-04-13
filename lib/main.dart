@@ -70,14 +70,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF0F1017),
+      scaffoldBackgroundColor: const Color(0xFF1C1C1E),
       colorScheme: const ColorScheme.dark(
         primary: Color(0xFFE8365D),
         secondary: Color(0xFFE8365D),
-        surface: Color(0xFF191B24),
-        surfaceContainerHighest: Color(0xFF1E2030),
-        outline: Color(0xFF2A2D3A),
-        outlineVariant: Color(0xFF2A2D3A),
+        surface: Color(0xFF2C2C2E),
+        surfaceContainerHighest: Color(0xFF3A3A3C),
+        outline: Color(0xFF3A3A3C),
+        outlineVariant: Color(0xFF3A3A3C),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: const Color(0xFFE8365D),

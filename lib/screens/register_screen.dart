@@ -6,7 +6,6 @@ import 'package:fsdmovil/providers/auth_provider.dart';
 import 'package:fsdmovil/widgets/app_logo.dart';
 
 const _pink = Color(0xFFE8365D);
-const _darkBg = Color(0xFF0F1017);
 const _fieldBg = Color(0xFF1E2030);
 const _textGrey = Color(0xFF8E8E93);
 
@@ -268,7 +267,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final strengthValue = _passwordStrength.index / 4.0;
 
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: const Color(0xFF1C1C1E),
       body: Container(
         decoration: const BoxDecoration(
           gradient: RadialGradient(

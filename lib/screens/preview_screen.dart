@@ -6,7 +6,6 @@ import 'package:fsdmovil/services/srs_word_service.dart';
 
 // ── Brand / UI tokens ────────────────────────────────────────────────────────
 const _primary = Color(0xFFE8365D);
-const _darkBg = Color(0xFF0F1017);
 const _bgSecondary = Color(0xFF13151F);
 const _border = Color(0xFF1F2130);
 const _textPrimary = Color(0xFFFFFFFF);
@@ -1206,7 +1205,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: const Color(0xFF1C1C1E),
       appBar: AppBar(
         backgroundColor: _bgSecondary,
         foregroundColor: _textPrimary,

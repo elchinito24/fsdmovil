@@ -121,6 +121,8 @@ class _WorkspacesScreenState extends State<WorkspacesScreen> {
 
     try {
       await ApiService.deleteWorkspace(workspace['id']);
+      ApiService.cacheDeletedWorkspace(
+          (workspace['name'] ?? '').toString(), workspace['id'] as int);
 
       if (!mounted) return;
 
@@ -157,6 +159,7 @@ class _WorkspacesScreenState extends State<WorkspacesScreen> {
   @override
   Widget build(BuildContext context) {
     return MainAppShell(
+      insideShell: true,
       selectedItem: TopNavItem.workspaces,
       eyebrow: 'Resumen',
       titleWhite: 'Tus ',

@@ -17,10 +17,37 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   List<dynamic> projects = [];
   String searchQuery = '';
 
+  RouterDelegate? _delegate;
+
   @override
   void initState() {
     super.initState();
     loadDocuments();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final delegate = GoRouter.of(context).routerDelegate;
+    if (_delegate != delegate) {
+      _delegate?.removeListener(_onRouteChange);
+      _delegate = delegate;
+      _delegate!.addListener(_onRouteChange);
+    }
+  }
+
+  void _onRouteChange() {
+    final path = GoRouter.of(context).routerDelegate
+        .currentConfiguration.uri.path;
+    if (path == '/documents') {
+      loadDocuments();
+    }
+  }
+
+  @override
+  void dispose() {
+    _delegate?.removeListener(_onRouteChange);
+    super.dispose();
   }
 
   Future<void> loadDocuments() async {
@@ -151,6 +178,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final visibleDocuments = filteredDocuments;
 
     return MainAppShell(
+      insideShell: true,
       selectedItem: TopNavItem.documents,
       eyebrow: 'Documentación',
       titleWhite: 'Todos tus ',

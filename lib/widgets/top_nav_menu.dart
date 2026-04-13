@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 const Color fsdPink = Color(0xFFE8365D);
-const Color fsdDarkBg = Color(0xFF0F1017);
-const Color fsdCardBg = Color(0xFF191B24);
-const Color fsdBorderColor = Color(0xFF2A2D3A);
+const Color fsdDarkBg = Color(0xFF1C1C1E);
+const Color fsdCardBg = Color(0xFF2C2C2E);
+const Color fsdBorderColor = Color(0xFF3A3A3C);
 const Color fsdTextGrey = Color(0xFF8E8E93);
 
-enum TopNavItem { workspaces, projects, documents, reviews, diagrams, history }
+enum TopNavItem { dashboard, workspaces, projects, documents, reviews, diagrams, history }
 
 class TopNavMenu extends StatefulWidget {
   final TopNavItem? selected;
@@ -25,6 +25,11 @@ class _TopNavMenuState extends State<TopNavMenu> {
   late final ScrollController _scrollController;
 
   static const _items = <_NavMenuData>[
+    _NavMenuData(
+      label: 'Inicio',
+      item: TopNavItem.dashboard,
+      route: '/dashboard',
+    ),
     _NavMenuData(
       label: 'Espacios de trabajo',
       item: TopNavItem.workspaces,

@@ -143,6 +143,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
     try {
       await ApiService.deleteProject(project['id']);
+      ApiService.cacheDeletedProject(
+          (project['name'] ?? '').toString(), project['id'] as int);
 
       if (!mounted) return;
 
@@ -230,7 +232,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       case 'completed':
         return const Color(0xFF1BC47D);
       default:
-        return Colors.white70;
+        return fsdTextGrey;
     }
   }
 
@@ -277,18 +279,12 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     }
   }
 
-  int _parseProgress(dynamic value) {
-    if (value == null) return 0;
-    if (value is int) return value.clamp(0, 100);
-    if (value is double) return value.round().clamp(0, 100);
-    return int.tryParse(value.toString())?.clamp(0, 100) ?? 0;
-  }
-
   @override
   Widget build(BuildContext context) {
     final visibleProjects = filteredProjects;
 
     return MainAppShell(
+      insideShell: true,
       selectedItem: TopNavItem.projects,
       eyebrow: '',
       titleWhite: 'Proyectos ',
@@ -312,7 +308,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
             backgroundColor: fsdPink,
             foregroundColor: Colors.white,
             elevation: 0,
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: 13),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
             ),
@@ -378,7 +374,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                             versionLabel: _formatVersion(project),
                             ownerLabel: _formatOwner(project),
                             updatedAtLabel: _formatDate(project['updated_at']),
-                            progressValue: _parseProgress(project['progress']),
                             onOpenEditor: () =>
                                 _openEditor(project['id'] as int),
                             onOpenPreview: () =>
@@ -443,13 +438,14 @@ class _ProjectsSearchAndFilter extends StatelessWidget {
             hintStyle: const TextStyle(color: fsdTextGrey),
             prefixIcon: const Icon(Icons.search_rounded, color: fsdTextGrey),
             border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           ),
         ),
       );
 
   Widget _filterDropdown(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(18),
@@ -461,6 +457,7 @@ class _ProjectsSearchAndFilter extends StatelessWidget {
             dropdownColor: Theme.of(context).colorScheme.surface,
             iconEnabledColor: Theme.of(context).colorScheme.onSurface,
             isExpanded: true,
+            itemHeight: 50,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurface,
               fontSize: 15,
@@ -479,27 +476,15 @@ class _ProjectsSearchAndFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 480;
-        if (wide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(flex: 3, child: _searchField(context)),
-              const SizedBox(width: 12),
-              Expanded(flex: 2, child: _filterDropdown(context)),
-            ],
-          );
-        }
-        return Column(
-          children: [
-            _searchField(context),
-            const SizedBox(height: 10),
-            _filterDropdown(context),
-          ],
-        );
-      },
+    return SizedBox(
+      height: 52,
+      child: Row(
+        children: [
+          Expanded(flex: 3, child: _searchField(context)),
+          const SizedBox(width: 10),
+          Expanded(flex: 2, child: _filterDropdown(context)),
+        ],
+      ),
     );
   }
 }
@@ -512,7 +497,6 @@ class _ProjectCard extends StatelessWidget {
   final String versionLabel;
   final String ownerLabel;
   final String updatedAtLabel;
-  final int progressValue;
   final VoidCallback onOpenEditor;
   final VoidCallback onOpenPreview;
   final VoidCallback onDelete;
@@ -525,7 +509,6 @@ class _ProjectCard extends StatelessWidget {
     required this.versionLabel,
     required this.ownerLabel,
     required this.updatedAtLabel,
-    required this.progressValue,
     required this.onOpenEditor,
     required this.onOpenPreview,
     required this.onDelete,
@@ -617,56 +600,41 @@ class _ProjectCard extends StatelessWidget {
                       if (value == 'preview') onOpenPreview();
                       if (value == 'delete') onDelete();
                     },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: 'editor',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.edit_note_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              'Abrir editor',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ],
+                    itemBuilder: (context) {
+                      final fg = Theme.of(context).colorScheme.onSurface;
+                      return [
+                        PopupMenuItem(
+                          value: 'editor',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_note_rounded, color: fg, size: 18),
+                              const SizedBox(width: 10),
+                              Text('Abrir editor', style: TextStyle(color: fg)),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: 'preview',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.visibility_outlined,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              'Vista previa',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ],
+                        PopupMenuItem(
+                          value: 'preview',
+                          child: Row(
+                            children: [
+                              Icon(Icons.visibility_outlined, color: fg, size: 18),
+                              const SizedBox(width: 10),
+                              Text('Vista previa', style: TextStyle(color: fg)),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.delete_outline_rounded,
-                              color: fsdPink,
-                              size: 18,
-                            ),
-                            SizedBox(width: 10),
-                            Text('Eliminar', style: TextStyle(color: fsdPink)),
-                          ],
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline_rounded, color: fsdPink, size: 18),
+                              SizedBox(width: 10),
+                              Text('Eliminar', style: TextStyle(color: fsdPink)),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ];
+                    },
                     child: const Padding(
                       padding: EdgeInsets.all(4),
                       child: Icon(Icons.more_vert_rounded, color: fsdTextGrey),
@@ -713,34 +681,6 @@ class _ProjectCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-              Text(
-                'Progreso',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: progressValue / 100,
-                  minHeight: 9,
-                  backgroundColor: Theme.of(context).colorScheme.outlineVariant,
-                  valueColor: const AlwaysStoppedAnimation<Color>(fsdPink),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '$progressValue%',
-                style: const TextStyle(
-                  color: fsdTextGrey,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -753,6 +693,8 @@ class _ProjectCard extends StatelessWidget {
                         foregroundColor: Theme.of(context).colorScheme.onSurface,
                         side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                         padding: const EdgeInsets.symmetric(vertical: 14),
+                        minimumSize: const Size(0, 50),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -770,6 +712,8 @@ class _ProjectCard extends StatelessWidget {
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 14),
+                        minimumSize: const Size(0, 50),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
