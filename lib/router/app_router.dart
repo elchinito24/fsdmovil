@@ -22,6 +22,7 @@ import 'package:fsdmovil/screens/meeting_mode_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_lobby_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_room_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_ai_result_screen.dart';
+import 'package:fsdmovil/screens/version_history_screen.dart';
 
 final routeObserver = RouteObserver<PageRoute<dynamic>>();
 
@@ -193,6 +194,13 @@ final appRouter = GoRouter(
           state,
           TeamMeetingAiResultScreen(sessionId: sessionId),
         );
+      },
+    ),
+    GoRoute(
+      path: '/history/:id',
+      builder: (context, state) {
+        final projectId = int.parse(state.pathParameters['id']!);
+        return VersionHistoryScreen(projectId: projectId);
       },
     ),
   ],

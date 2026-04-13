@@ -88,6 +88,12 @@ class _EditorScreenState extends State<EditorScreen> {
           path: 'metadata.projectName',
         ),
         _FieldSpec(
+          key: 'projectCode',
+          label: 'Código del Proyecto',
+          hint: 'Ingrese código del proyecto',
+          path: 'metadata.projectCode',
+        ),
+        _FieldSpec(
           key: 'version',
           label: 'Versión',
           hint: 'Ingrese versión',
@@ -421,10 +427,20 @@ class _EditorScreenState extends State<EditorScreen> {
 
     _setText('projectName', _safeText(metadata['projectName']));
     _setText(
+      'projectCode',
+      _safeText(
+        metadata['projectCode'],
+        fallback: _safeText(fullResponse?['project_code']),
+      ),
+    );
+    _setText(
       'version',
       _safeText(
-        srsData['version'],
-        fallback: _safeText(fullResponse?['version'], fallback: '1.0'),
+        metadata['version'],
+        fallback: _safeText(
+          srsData['version'],
+          fallback: _safeText(fullResponse?['version'], fallback: '1.0'),
+        ),
       ),
     );
     _setText('date', _safeText(metadata['createdAt']));
@@ -580,6 +596,8 @@ class _EditorScreenState extends State<EditorScreen> {
     return {
       'metadata': {
         'projectName': _controllers['projectName']!.text.trim(),
+        'projectCode': _controllers['projectCode']!.text.trim(),
+        'version': _controllers['version']!.text.trim(),
         'createdAt': _controllers['date']!.text.trim(),
         'owner': _controllers['author']!.text.trim(),
         'organization': _controllers['organization']!.text.trim(),

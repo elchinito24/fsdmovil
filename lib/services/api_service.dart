@@ -776,4 +776,14 @@ class ApiService {
       throw Exception('Error al aplicar resultados al SRS: $e');
     }
   }
+
+  static Future<List<dynamic>> getProjectHistory(int projectId) async {
+    try {
+      final response = await _dio.get('/projects/$projectId/history/');
+      final data = Map<String, dynamic>.from(response.data);
+      return List<dynamic>.from(data['history'] ?? []);
+    } catch (e) {
+      throw Exception('Error al cargar historial: $e');
+    }
+  }
 }

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
 import 'package:fsdmovil/widgets/main_app_shell.dart';
 import 'package:fsdmovil/widgets/top_nav_menu.dart';
+import 'package:fsdmovil/screens/version_history_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -64,8 +65,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
     await loadHistory();
   }
 
-  Future<void> _openPreview(int projectId) async {
-    await context.push('/preview/$projectId');
+  Future<void> _openVersionHistory(int projectId) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VersionHistoryScreen(projectId: projectId),
+      ),
+    );
 
     if (!mounted) return;
     setState(() => loading = true);
@@ -236,8 +242,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             progressValue: _parseProgress(project['progress']),
                             onOpenEditor: () =>
                                 _openEditor(project['id'] as int),
-                            onOpenPreview: () =>
-                                _openPreview(project['id'] as int),
+                            onOpenVersionHistory: () =>
+                                _openVersionHistory(project['id'] as int),
                           ),
                         );
                       }).toList(),
@@ -290,7 +296,7 @@ class _HistoryCard extends StatelessWidget {
   final String updatedAtLabel;
   final int progressValue;
   final VoidCallback onOpenEditor;
-  final VoidCallback onOpenPreview;
+  final VoidCallback onOpenVersionHistory;
 
   const _HistoryCard({
     required this.project,
@@ -301,7 +307,7 @@ class _HistoryCard extends StatelessWidget {
     required this.updatedAtLabel,
     required this.progressValue,
     required this.onOpenEditor,
-    required this.onOpenPreview,
+    required this.onOpenVersionHistory,
   });
 
   @override
@@ -467,7 +473,7 @@ class _HistoryCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: onOpenPreview,
+                    onPressed: onOpenVersionHistory,
                     icon: const Icon(Icons.visibility_outlined, size: 18),
                     label: const Text('Ver cambios'),
                     style: ElevatedButton.styleFrom(
