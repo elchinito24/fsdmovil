@@ -162,12 +162,14 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
   }
 
   Widget _label(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.w600,
-        fontSize: 14,
+    return Builder(
+      builder: (context) => Text(
+        text,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface,
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
       ),
     );
   }
@@ -178,11 +180,14 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        foregroundColor: Colors.white,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Crear Workspace',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
       ),
       body: Container(
@@ -210,18 +215,18 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
               ),
               const SizedBox(height: 14),
               RichText(
-                text: const TextSpan(
+                text: TextSpan(
                   children: [
                     TextSpan(
                       text: 'Crear ',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 38,
                         height: 1.05,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    TextSpan(
+                    const TextSpan(
                       text: 'Workspace',
                       style: TextStyle(
                         color: _pink,
@@ -245,7 +250,7 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
               const SizedBox(height: 8),
               TextField(
                 controller: nameController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 decoration:
                     _inputDecoration(context, 'Ingrese nombre del workspace'),
                 onChanged: (value) {
@@ -262,7 +267,7 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
               const SizedBox(height: 8),
               TextField(
                 controller: slugController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 decoration: _inputDecoration(context, 'ejemplo-workspace'),
               ),
               const SizedBox(height: 20),
@@ -272,7 +277,7 @@ class _CreateWorkspaceScreenState extends State<CreateWorkspaceScreen> {
               TextField(
                 controller: descriptionController,
                 maxLines: 4,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 decoration: _inputDecoration(context, 'Ingrese una descripción'),
               ),
               const SizedBox(height: 32),

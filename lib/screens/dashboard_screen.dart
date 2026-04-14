@@ -152,16 +152,10 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Text('', style: TextStyle()).copyWithText(title);
-  }
-}
-
-extension on Widget {
-  Widget copyWithText(String title) {
     return Text(
       title,
-      style: const TextStyle(
-        color: Colors.white,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface,
         fontSize: 20,
         fontWeight: FontWeight.w800,
       ),
@@ -209,7 +203,7 @@ class _QuickAccessCard extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: const Color(0x22E8365D),
+                  color: Theme.of(context).colorScheme.secondary.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(icon, color: fsdPink, size: 24),
