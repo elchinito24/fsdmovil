@@ -350,8 +350,10 @@ class ApiService {
     Map<String, dynamic> data,
   ) async {
     try {
-      final response =
-          await _dio.patch('/workspaces/$workspaceId/', data: data);
+      final response = await _dio.patch(
+        '/workspaces/$workspaceId/',
+        data: data,
+      );
       return Map<String, dynamic>.from(response.data);
     } on DioException catch (e) {
       throw Exception(_parseApiError(e, 'Error al actualizar workspace'));
@@ -1452,9 +1454,7 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> getTemplateSchema(
-    int templateId,
-  ) async {
+  static Future<Map<String, dynamic>> getTemplateSchema(int templateId) async {
     try {
       final response = await _dio.get('/templates/$templateId/schema/');
       return Map<String, dynamic>.from(response.data);
@@ -1518,6 +1518,20 @@ class ApiService {
       );
     } catch (e) {
       throw Exception('Error al obtener notificación: $e');
+    }
+  }
+
+  static Future<List<dynamic>> getProjectHistory(int projectId) async {
+    try {
+      final response = await _dio.get('/projects/$projectId/history/');
+      final data = Map<String, dynamic>.from(response.data);
+      return List<dynamic>.from(data['history'] ?? []);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al cargar historial: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al cargar historial: $e');
     }
   }
 }
