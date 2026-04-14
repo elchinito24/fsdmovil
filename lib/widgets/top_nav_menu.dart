@@ -40,11 +40,11 @@ class _TopNavMenuState extends State<TopNavMenu> {
       item: TopNavItem.projects,
       route: '/projects',
     ),
-    _NavMenuData(
-      label: 'Documentos',
-      item: TopNavItem.documents,
-      route: '/documents',
-    ),
+    // _NavMenuData(
+    //   label: 'Documentos',
+    //   item: TopNavItem.documents,
+    //   route: '/documents',
+    // ),
     _NavMenuData(
       label: 'Revisiones',
       item: TopNavItem.reviews,

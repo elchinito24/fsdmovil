@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -43,7 +42,8 @@ class _DiagramDetailScreenState extends State<DiagramDetailScreen> {
   bool _isSaving = false;
   bool _previewLoading = true;
   bool _interactiveLoading = true;
-  Timer? _autosaveTimer;
+  bool _bottomPanelOpen = false;
+  bool _edgeModeActive = false;
   _ViewMode _viewMode = _ViewMode.visual;
   _DiagramViewMode _diagViewMode = _DiagramViewMode.json;
 
@@ -86,9 +86,7 @@ class _DiagramDetailScreenState extends State<DiagramDetailScreen> {
   }
 
   void _onCodeChanged() {
-    _autosaveTimer?.cancel();
-    if (!_isDirty) return;
-    _autosaveTimer = Timer(const Duration(seconds: 3), _save);
+    if (mounted) setState(() {});
   }
 
   String _buildHtml(String code) {
@@ -148,8 +146,6 @@ class _DiagramDetailScreenState extends State<DiagramDetailScreen> {
     _codeController.removeListener(_onCodeChanged);
     _codeController.text = newCode;
     _codeController.addListener(_onCodeChanged);
-    _autosaveTimer?.cancel();
-    _autosaveTimer = Timer(const Duration(seconds: 3), _save);
     if (mounted) setState(() {});
   }
 
@@ -169,30 +165,10 @@ class _DiagramDetailScreenState extends State<DiagramDetailScreen> {
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0F1017; color: #CDD3DE; font-family: -apple-system, sans-serif; overflow: hidden; }
-#cy { width: 100vw; height: calc(100vh - 52px); }
-#toolbar {
-  height: 52px; background: #1C1C2E; border-bottom: 1px solid #3A3A3C;
-  display: flex; align-items: center; gap: 8px; padding: 0 12px; overflow-x: auto;
-}
-.btn {
-  background: #2C2C3E; color: #CDD3DE; border: 1px solid #3A3A3C;
-  border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer;
-  white-space: nowrap; flex-shrink: 0;
-}
-.btn.danger { color: #E8365D; border-color: #E8365D33; }
-.btn.primary { background: #E8365D; color: #fff; border-color: #E8365D; }
-.btn.active { background: #E8365D22; border-color: #E8365D; color: #E8365D; }
-#lbl { color: #8E8E93; font-size: 12px; margin-left: auto; flex-shrink: 0; }
+#cy { width: 100vw; height: 100vh; }
 </style>
 </head>
 <body>
-<div id="toolbar">
-  <button class="btn primary" onclick="addNode()">+ Nodo</button>
-  <button class="btn" id="btnEdge" onclick="toggleEdgeMode()">Conectar</button>
-  <button class="btn danger" onclick="deleteSelected()">Eliminar</button>
-  <button class="btn" onclick="layoutAuto()">Auto layout</button>
-  <span id="lbl">Toca para seleccionar</span>
-</div>
 <div id="cy"></div>
 <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
 <script>
@@ -293,21 +269,17 @@ cy.on('tap', 'node', function(e) {
   var node = e.target;
   if (!edgeSource) {
     edgeSource = node; node.addClass('edge-source');
-    document.getElementById('lbl').textContent = 'Toca nodo destino';
   } else {
     if (edgeSource.id() !== node.id()) {
       cy.add({ data: { id: 'e'+Date.now(), source: edgeSource.id(), target: node.id(), label: '' } });
       emitCode();
     }
     edgeSource.removeClass('edge-source'); edgeSource = null;
-    document.getElementById('lbl').textContent = 'Conectado';
-    setTimeout(function(){ document.getElementById('lbl').textContent = 'Toca para seleccionar'; }, 1200);
   }
 });
 cy.on('tap', function(e) {
   if (e.target === cy && edgeMode && edgeSource) {
     edgeSource.removeClass('edge-source'); edgeSource = null;
-    document.getElementById('lbl').textContent = 'Toca para seleccionar';
   }
 });
 cy.on('dbltap', 'node', function(e) {
@@ -328,11 +300,7 @@ function addNode() {
 }
 function toggleEdgeMode() {
   edgeMode = !edgeMode;
-  var btn = document.getElementById('btnEdge');
-  btn.className = edgeMode ? 'btn active' : 'btn';
-  btn.textContent = edgeMode ? 'Cancelar' : 'Conectar';
   if (!edgeMode && edgeSource) { edgeSource.removeClass('edge-source'); edgeSource = null; }
-  document.getElementById('lbl').textContent = edgeMode ? 'Toca nodo origen' : 'Toca para seleccionar';
 }
 function deleteSelected() { cy.elements(':selected').remove(); emitCode(); }
 function layoutAuto() { cy.layout({ name: 'breadthfirst', directed: true, padding: 20, spacingFactor: 1.4 }).run(); }
@@ -367,8 +335,18 @@ function emitCode() {
       setState(() => _initialCode = _codeController.text);
       _refreshPreview();
       _refreshInteractive();
-    } catch (_) {
-      // silently fail autosave; user can tap save manually
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Error al guardar: ${e.toString().replaceFirst('Exception: ', '')}'),
+          backgroundColor: fsdPink,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -376,9 +354,22 @@ function emitCode() {
 
   Future<void> _saveManual() => _save();
 
+  Future<void> _addNode() =>
+      _interactiveController.runJavaScript('addNode()');
+
+  Future<void> _toggleEdgeMode() async {
+    setState(() => _edgeModeActive = !_edgeModeActive);
+    await _interactiveController.runJavaScript('toggleEdgeMode()');
+  }
+
+  Future<void> _deleteSelected() =>
+      _interactiveController.runJavaScript('deleteSelected()');
+
+  Future<void> _autoLayout() =>
+      _interactiveController.runJavaScript('layoutAuto()');
+
   @override
   void dispose() {
-    _autosaveTimer?.cancel();
     _codeController.dispose();
     super.dispose();
   }
@@ -665,7 +656,7 @@ function emitCode() {
                   )
                 : Column(
                     children: [
-                      // ── Top bar (SRS editor style) ──────────────────────
+                      // ── Top bar ─────────────────────────────────────────
                       Container(
                         padding: const EdgeInsets.fromLTRB(4, 0, 12, 0),
                         decoration: const BoxDecoration(
@@ -694,7 +685,7 @@ function emitCode() {
                                 ),
                               ),
                             ),
-                            // Save indicator
+                            // Guardar — siempre visible
                             if (_isSaving)
                               const SizedBox(
                                 width: 18,
@@ -702,12 +693,15 @@ function emitCode() {
                                 child: CircularProgressIndicator(
                                     color: fsdPink, strokeWidth: 2.2),
                               )
-                            else if (_isDirty)
+                            else
                               FilledButton(
-                                onPressed: _saveManual,
+                                onPressed: _isDirty ? _saveManual : null,
                                 style: FilledButton.styleFrom(
                                   backgroundColor: fsdPink,
+                                  disabledBackgroundColor:
+                                      const Color(0xFF2C2C3E),
                                   foregroundColor: Colors.white,
+                                  disabledForegroundColor: fsdTextGrey,
                                   minimumSize: const Size(0, 32),
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 16),
@@ -719,16 +713,6 @@ function emitCode() {
                                     style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w700)),
-                              )
-                            else
-                              Text(
-                                'Guardado',
-                                style: TextStyle(
-                                  color: const Color(0xFF1BC47D)
-                                      .withValues(alpha: 0.9),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
                               ),
                           ],
                         ),
@@ -797,6 +781,23 @@ function emitCode() {
                                               color: fsdPink,
                                               strokeWidth: 2.5),
                                         ),
+                                      // Panel de herramientas desplegable
+                                      Positioned(
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        child: _InteractiveToolPanel(
+                                          isOpen: _bottomPanelOpen,
+                                          onToggle: () => setState(() =>
+                                              _bottomPanelOpen =
+                                                  !_bottomPanelOpen),
+                                          edgeModeActive: _edgeModeActive,
+                                          onAddNode: _addNode,
+                                          onToggleEdge: _toggleEdgeMode,
+                                          onDelete: _deleteSelected,
+                                          onAutoLayout: _autoLayout,
+                                        ),
+                                      ),
                                     ],
                                   )
                                 : Stack(
@@ -1673,6 +1674,155 @@ class _ErrorState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Interactive bottom tool panel ───────────────────────────────────────────
+
+class _InteractiveToolPanel extends StatelessWidget {
+  final bool isOpen;
+  final VoidCallback onToggle;
+  final bool edgeModeActive;
+  final VoidCallback onAddNode;
+  final VoidCallback onToggleEdge;
+  final VoidCallback onDelete;
+  final VoidCallback onAutoLayout;
+
+  const _InteractiveToolPanel({
+    required this.isOpen,
+    required this.onToggle,
+    required this.edgeModeActive,
+    required this.onAddNode,
+    required this.onToggleEdge,
+    required this.onDelete,
+    required this.onAutoLayout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── Botón toggle centrado ──
+        Center(
+          child: GestureDetector(
+            onTap: onToggle,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 28, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C2E),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
+                border: Border.all(color: fsdBorderColor),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x55000000),
+                    blurRadius: 10,
+                    offset: Offset(0, -3),
+                  ),
+                ],
+              ),
+              child: AnimatedRotation(
+                turns: isOpen ? 0.5 : 0,
+                duration: const Duration(milliseconds: 220),
+                child: const Icon(
+                  Icons.keyboard_arrow_up_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+        ),
+        // ── Panel con botones de herramientas ──
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          height: isOpen ? 72 : 0,
+          clipBehavior: Clip.hardEdge,
+          decoration: const BoxDecoration(
+            color: Color(0xFF1C1C2E),
+            border: Border(top: BorderSide(color: fsdBorderColor)),
+          ),
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _ToolBtn(
+                  label: '+ Nodo',
+                  icon: Icons.add_circle_outline_rounded,
+                  onTap: onAddNode,
+                ),
+                _ToolBtn(
+                  label: edgeModeActive ? 'Cancelar' : 'Conectar',
+                  icon: Icons.linear_scale_rounded,
+                  onTap: onToggleEdge,
+                  active: edgeModeActive,
+                ),
+                _ToolBtn(
+                  label: 'Eliminar',
+                  icon: Icons.delete_outline_rounded,
+                  onTap: onDelete,
+                  danger: true,
+                ),
+                _ToolBtn(
+                  label: 'Auto layout',
+                  icon: Icons.account_tree_outlined,
+                  onTap: onAutoLayout,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ToolBtn extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool active;
+  final bool danger;
+
+  const _ToolBtn({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.active = false,
+    this.danger = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger
+        ? fsdPink
+        : active
+            ? const Color(0xFF55A6FF)
+            : fsdTextGrey;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 22),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
