@@ -534,6 +534,7 @@ class _ProjectCard extends StatelessWidget {
         ? project['workspace_name'].toString()
         : 'Sin workspace';
 
+    // Tarjeta crece según el contenido, sin alto fijo, y evita overflow
     return InkWell(
       borderRadius: BorderRadius.circular(24),
       onTap: onOpenEditor,
@@ -553,6 +554,7 @@ class _ProjectCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(

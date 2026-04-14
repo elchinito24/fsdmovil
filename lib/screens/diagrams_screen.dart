@@ -595,169 +595,171 @@ class _CreateDiagramDialogState extends State<_CreateDiagramDialog> {
     return Dialog(
       backgroundColor: bg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'Nuevo diagrama',
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Nuevo diagrama',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    icon: Icon(Icons.close_rounded, color: labelColor),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _FieldLabel(label: 'NOMBRE DEL DIAGRAMA', color: labelColor),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _nameController,
+                style: TextStyle(color: textColor),
+                decoration: InputDecoration(
+                  hintText: 'Ej: Flujo de autenticación',
+                  hintStyle: TextStyle(color: labelColor),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: fsdPink),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
                   ),
                 ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  icon: Icon(Icons.close_rounded, color: labelColor),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+              ),
+              const SizedBox(height: 14),
+              _FieldLabel(label: 'PROYECTO', color: labelColor),
+              const SizedBox(height: 6),
+              _loadingProjects
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(8),
+                        child: CircularProgressIndicator(
+                          color: fsdPink,
+                          strokeWidth: 2.5,
+                        ),
+                      ),
+                    )
+                  : _DropdownField(
+                      value: _selectedProjectName,
+                      hint: 'Selecciona un proyecto...',
+                      items: _projects
+                          .map((p) => p['name'].toString())
+                          .toList(),
+                      isDark: isDark,
+                      border: border,
+                      labelColor: labelColor,
+                      textColor: textColor,
+                      onChanged: (val) {
+                        final project = _projects.firstWhere(
+                          (p) => p['name'].toString() == val,
+                          orElse: () => null,
+                        );
+                        setState(() {
+                          _selectedProjectName = val;
+                          _selectedProjectId = project?['id'];
+                        });
+                      },
+                    ),
+              const SizedBox(height: 14),
+              _FieldLabel(label: 'TIPO DE DIAGRAMA', color: labelColor),
+              const SizedBox(height: 6),
+              _DropdownField(
+                value: _selectedType == null
+                    ? null
+                    : _diagramTypes
+                        .where((t) => t.value == _selectedType)
+                        .map((t) => t.label)
+                        .firstOrNull,
+                hint: 'Selecciona el tipo...',
+                items: _diagramTypes.map((t) => t.label).toList(),
+                isDark: isDark,
+                border: border,
+                labelColor: labelColor,
+                textColor: textColor,
+                onChanged: (val) {
+                  final match =
+                      _diagramTypes.where((t) => t.label == val).toList();
+                  setState(() {
+                    _selectedType = match.isNotEmpty ? match.first.value : val;
+                  });
+                },
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _error!,
+                  style: const TextStyle(
+                    color: fsdPink,
+                    fontSize: 12,
+                  ),
                 ),
               ],
-            ),
-            const SizedBox(height: 20),
-            _FieldLabel(label: 'NOMBRE DEL DIAGRAMA', color: labelColor),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _nameController,
-              style: TextStyle(color: textColor),
-              decoration: InputDecoration(
-                hintText: 'Ej: Flujo de autenticación',
-                hintStyle: TextStyle(color: labelColor),
-                filled: true,
-                fillColor: isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: fsdPink),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            _FieldLabel(label: 'PROYECTO', color: labelColor),
-            const SizedBox(height: 6),
-            _loadingProjects
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(8),
-                      child: CircularProgressIndicator(
-                        color: fsdPink,
-                        strokeWidth: 2.5,
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: Text(
+                      'Cancelar',
+                      style: TextStyle(color: labelColor),
+                    ),
+                  ),
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: _loading ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: fsdPink,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 12,
                       ),
                     ),
-                  )
-                : _DropdownField(
-                    value: _selectedProjectName,
-                    hint: 'Selecciona un proyecto...',
-                    items: _projects
-                        .map((p) => p['name'].toString())
-                        .toList(),
-                    isDark: isDark,
-                    border: border,
-                    labelColor: labelColor,
-                    textColor: textColor,
-                    onChanged: (val) {
-                      final project = _projects.firstWhere(
-                        (p) => p['name'].toString() == val,
-                        orElse: () => null,
-                      );
-                      setState(() {
-                        _selectedProjectName = val;
-                        _selectedProjectId = project?['id'];
-                      });
-                    },
+                    child: _loading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Text(
+                            'Crear diagrama',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
                   ),
-            const SizedBox(height: 14),
-            _FieldLabel(label: 'TIPO DE DIAGRAMA', color: labelColor),
-            const SizedBox(height: 6),
-            _DropdownField(
-              value: _selectedType == null
-                  ? null
-                  : _diagramTypes
-                      .where((t) => t.value == _selectedType)
-                      .map((t) => t.label)
-                      .firstOrNull,
-              hint: 'Selecciona el tipo...',
-              items: _diagramTypes.map((t) => t.label).toList(),
-              isDark: isDark,
-              border: border,
-              labelColor: labelColor,
-              textColor: textColor,
-              onChanged: (val) {
-                final match =
-                    _diagramTypes.where((t) => t.label == val).toList();
-                setState(() {
-                  _selectedType = match.isNotEmpty ? match.first.value : val;
-                });
-              },
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                _error!,
-                style: const TextStyle(
-                  color: fsdPink,
-                  fontSize: 12,
-                ),
+                ],
               ),
             ],
-            const SizedBox(height: 22),
-            Row(
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: Text(
-                    'Cancelar',
-                    style: TextStyle(color: labelColor),
-                  ),
-                ),
-                const Spacer(),
-                ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: fsdPink,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 12,
-                    ),
-                  ),
-                  child: _loading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2.5,
-                          ),
-                        )
-                      : const Text(
-                          'Crear diagrama',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );

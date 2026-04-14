@@ -1529,45 +1529,53 @@ class _ProjectCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              name,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              description,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _textGrey,
-                fontSize: 14,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              children: [
-                _TinyChip(icon: Icons.tag_rounded, text: code, color: _pink),
-                _TinyChip(
-                  icon: Icons.flag_outlined,
-                  text: _statusLabel(status),
-                  color: _statusColor(status),
+      child: SizedBox(
+        height: 140,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _textGrey,
+                  fontSize: 13.5,
+                  height: 1.4,
+                ),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  Flexible(
+                    child: _TinyChip(icon: Icons.tag_rounded, text: code, color: _pink),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: _TinyChip(
+                      icon: Icons.flag_outlined,
+                      text: _statusLabel(status),
+                      color: _statusColor(status),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1596,14 +1604,17 @@ class _TinyChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 14),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
+          Icon(icon, color: color, size: 13),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
