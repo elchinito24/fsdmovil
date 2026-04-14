@@ -284,7 +284,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 Row(
                   children: filters.map((f) {
                     final selected = f == filter;
-
+                    final surface = Theme.of(context).colorScheme.surface;
+                    final onSurface = Theme.of(context).colorScheme.onSurface;
                     return Expanded(
                       child: GestureDetector(
                         onTap: () {
@@ -298,7 +299,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                           decoration: BoxDecoration(
                             color: selected
                                 ? fsdPink.withOpacity(0.2)
-                                : fsdCardBg,
+                                : surface,
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: selected ? fsdPink : fsdBorderColor,
@@ -308,7 +309,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                             child: Text(
                               f,
                               style: TextStyle(
-                                color: Colors.white,
+                                color: selected ? fsdPink : onSurface,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -444,20 +445,22 @@ class _EmptyReviews extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surface = Theme.of(context).colorScheme.surface;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: fsdCardBg,
+        color: surface,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Column(
-        children: [
+      child: Column(
+        children: const [
           Icon(Icons.rate_review, color: fsdPink, size: 40),
           SizedBox(height: 10),
           Text(
             'Sin revisiones pendientes',
             style: TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w800),
+                color: Colors.black, fontWeight: FontWeight.w800),
           ),
           SizedBox(height: 6),
           Text(

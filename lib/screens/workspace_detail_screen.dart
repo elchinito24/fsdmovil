@@ -683,18 +683,7 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
       description: wsDescription,
       useBodyPadding: true,
       onRefresh: loading ? null : loadData,
-      floatingActionButton: (!loading && projects.isEmpty)
-          ? FloatingActionButton.extended(
-              backgroundColor: _pink,
-              foregroundColor: Colors.white,
-              onPressed: () => context.push('/create-project?workspaceId=${widget.workspaceId}'),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text(
-                'Nuevo proyecto',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-            )
-          : null,
+      // Botón flotante de nuevo proyecto eliminado
       child: loading
           ? const Padding(
               padding: EdgeInsets.only(top: 40),

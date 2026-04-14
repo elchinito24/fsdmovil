@@ -184,9 +184,10 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   }
 
   InputDecoration _inputDecoration(BuildContext context, String hint) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: _textGrey),
+      hintStyle: TextStyle(color: _textGrey.withOpacity(0.8)),
       filled: true,
       fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       contentPadding:
@@ -203,16 +204,20 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: _pink, width: 1.5),
       ),
+      // Cambia el color del texto del input
+      // El color del texto se define en el TextField, pero puedes usar inputStyle si usas InputDecorator
     );
   }
 
   Widget _label(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.w600,
-        fontSize: 14,
+    return Builder(
+      builder: (context) => Text(
+        text,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface,
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
       ),
     );
   }
@@ -223,11 +228,15 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        foregroundColor: Colors.white,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         elevation: 0,
-        title: const Text(
+        iconTheme: IconThemeData(color: Theme.of(context).colorScheme.onSurface),
+        title: Text(
           'Crear Proyecto',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
       body: Container(
@@ -298,18 +307,18 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         ),
                         const SizedBox(height: 14),
                         RichText(
-                          text: const TextSpan(
+                          text: TextSpan(
                             children: [
                               TextSpan(
                                 text: 'Crear ',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: Theme.of(context).colorScheme.onSurface,
                                   fontSize: 38,
                                   height: 1.05,
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
-                              TextSpan(
+                              const TextSpan(
                                 text: 'Proyecto',
                                 style: TextStyle(
                                   color: _pink,
@@ -333,7 +342,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         const SizedBox(height: 8),
                         TextField(
                           controller: nameController,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                           decoration: _inputDecoration(
                               context, 'Ingrese nombre del proyecto'),
                         ),
@@ -343,7 +352,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         const SizedBox(height: 8),
                         TextField(
                           controller: codeController,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                           decoration: _inputDecoration(context, 'Ej. SIS-002'),
                         ),
                         const SizedBox(height: 20),
@@ -353,7 +362,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         TextField(
                           controller: descriptionController,
                           maxLines: 4,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                           decoration:
                               _inputDecoration(context, 'Ingrese una descripción'),
                         ),
@@ -374,12 +383,12 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                               value: selectedWorkspaceId,
                               isExpanded: true,
                               dropdownColor: Theme.of(context).colorScheme.surface,
-                              style: const TextStyle(color: Colors.white),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                               iconEnabledColor: _textGrey,
                               items: workspaces.map((ws) {
                                 return DropdownMenuItem<int>(
                                   value: ws['id'] as int,
-                                  child: Text(ws['name'] ?? 'Workspace'),
+                                  child: Text(ws['name'] ?? 'Workspace', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
                                 );
                               }).toList(),
                               onChanged: (value) =>
@@ -404,12 +413,12 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                               value: selectedTemplateId,
                               isExpanded: true,
                               dropdownColor: Theme.of(context).colorScheme.surface,
-                              style: const TextStyle(color: Colors.white),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                               iconEnabledColor: _textGrey,
                               items: templates.map((tpl) {
                                 return DropdownMenuItem<int>(
                                   value: tpl['id'] as int,
-                                  child: Text(tpl['name'] ?? 'Template'),
+                                  child: Text(tpl['name'] ?? 'Template', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
                                 );
                               }).toList(),
                               onChanged: (value) =>
