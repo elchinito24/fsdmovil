@@ -1104,6 +1104,50 @@ class _PreviewScreenState extends State<PreviewScreen> {
             }).toList(),
           ]),
         ],
+        // ── Custom sections ───────────────────────────────────────────────
+        ...() {
+          final customIds =
+              List<dynamic>.from(srs['customSectionIds'] ?? []);
+          if (customIds.isEmpty) return <Widget>[];
+          final widgets = <Widget>[];
+          for (var i = 0; i < customIds.length; i++) {
+            final secId = customIds[i] as String;
+            final sec =
+                Map<String, dynamic>.from(srs[secId] as Map? ?? {});
+            final secTitle =
+                safeText(sec['title'], fallback: 'Sección personalizada');
+            final subIds = List<dynamic>.from(
+                sec['subsectionIds'] as List? ?? []);
+            final secNum = (6 + i).toString();
+
+            widgets.add(const SizedBox(height: 24));
+            widgets.add(pageCard([
+              _secHeading(secNum, secTitle),
+              if (subIds.isEmpty)
+                _docP('Sin contenido.')
+              else
+                ...subIds.asMap().entries.map((e) {
+                  final subId = e.value as String;
+                  final sub = Map<String, dynamic>.from(
+                      sec[subId] as Map? ?? {});
+                  final subTitle =
+                      safeText(sub['title'], fallback: 'Subsección');
+                  final content =
+                      safeText(sub['content'], fallback: '');
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _subHeading('$secNum.${e.key + 1}', subTitle,
+                          first: e.key == 0),
+                      _docP(content),
+                    ],
+                  );
+                }),
+            ]));
+          }
+          return widgets;
+        }(),
+
         const SizedBox(height: 40),
       ],
     );

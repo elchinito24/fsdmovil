@@ -1266,6 +1266,28 @@ class ApiService {
     }
   }
 
+  // ─── Tasks ───────────────────────────────────────────────────────────────
+
+  static Future<List<dynamic>> getTasks(int projectId) async {
+    try {
+      final response = await _dio.get(
+        '/tasks/',
+        queryParameters: {'project': projectId, 'page_size': 200},
+      );
+      if (response.data is Map<String, dynamic>) {
+        return List<dynamic>.from(response.data['results'] ?? []);
+      }
+      if (response.data is List) return List<dynamic>.from(response.data);
+      return [];
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener tareas: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener tareas: $e');
+    }
+  }
+
   // ─── Diagrams ────────────────────────────────────────────────────────────
 
   static Future<List<dynamic>> getDiagrams() async {

@@ -7,7 +7,7 @@ const Color fsdCardBg = Color(0xFF2C2C2E);
 const Color fsdBorderColor = Color(0xFF3A3A3C);
 const Color fsdTextGrey = Color(0xFF8E8E93);
 
-enum TopNavItem { dashboard, workspaces, projects, documents, reviews, diagrams, history }
+enum TopNavItem { dashboard, workspaces, projects, documents, reviews, diagrams, history, schedule }
 
 class TopNavMenu extends StatefulWidget {
   final TopNavItem? selected;
@@ -59,6 +59,11 @@ class _TopNavMenuState extends State<TopNavMenu> {
       label: 'Historial',
       item: TopNavItem.history,
       route: '/history',
+    ),
+    _NavMenuData(
+      label: 'Cronograma',
+      item: TopNavItem.schedule,
+      route: '/schedule',
     ),
   ];
 

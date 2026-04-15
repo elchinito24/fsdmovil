@@ -35,6 +35,8 @@ class _DiagramEditorScreenState extends State<DiagramEditorScreen> {
   bool _dirty = false;
   bool _canvasLoading = true;
   bool _panelOpen = false;
+  bool _isDark = true;
+  bool _htmlLoaded = false;
 
   late final WebViewController _controller;
   Timer? _autosaveTimer;
@@ -57,8 +59,20 @@ class _DiagramEditorScreenState extends State<DiagramEditorScreen> {
         onPageFinished: (_) {
           if (mounted) setState(() => _canvasLoading = false);
         },
-      ))
-      ..loadHtmlString(_buildHtml(_code));
+      ));
+    // HTML loads in didChangeDependencies (needs theme)
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (!_htmlLoaded || isDark != _isDark) {
+      _isDark = isDark;
+      _htmlLoaded = true;
+      if (_htmlLoaded) setState(() => _canvasLoading = true);
+      _controller.loadHtmlString(_buildHtml(_code, isDark));
+    }
   }
 
   @override
@@ -91,30 +105,32 @@ class _DiagramEditorScreenState extends State<DiagramEditorScreen> {
     final controller = TextEditingController(text: currentLabel);
     final newLabel = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E2130),
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+        backgroundColor: cs.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
+        title: Text(
           'Renombrar nodo',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+          style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w800, fontSize: 16),
         ),
         content: TextField(
           controller: controller,
           autofocus: true,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: cs.onSurface),
           cursorColor: fsdPink,
           decoration: InputDecoration(
             filled: true,
-            fillColor: const Color(0xFF252838),
+            fillColor: cs.surfaceContainerHighest,
             hintText: 'Nombre del nodo',
             hintStyle: const TextStyle(color: fsdTextGrey),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: fsdBorderColor),
+              borderSide: BorderSide(color: cs.outlineVariant),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: fsdBorderColor),
+              borderSide: BorderSide(color: cs.outlineVariant),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -138,7 +154,8 @@ class _DiagramEditorScreenState extends State<DiagramEditorScreen> {
             child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
         ],
-      ),
+      );
+      },
     );
     if (!mounted) return;
     if (newLabel != null && newLabel.isNotEmpty) {
@@ -187,11 +204,18 @@ class _DiagramEditorScreenState extends State<DiagramEditorScreen> {
   // ────────────────────────────────────────────────────────────────────────
   // HTML / cytoscape
   // ────────────────────────────────────────────────────────────────────────
-  String _buildHtml(String code) {
+  String _buildHtml(String code, bool isDark) {
     final escaped = code
         .replaceAll(r'\', r'\\')
         .replaceAll('`', r'\`')
         .replaceAll(r'$', r'\$');
+
+    final bg        = isDark ? '#0F1017' : '#F6F7FB';
+    final nodeBg    = isDark ? '#2C2C3E' : '#FFFFFF';
+    final neutral   = isDark ? '#3A3A3C' : '#C8CBD4';
+    final lightText = isDark ? '#CDD3DE' : '#1A1E2B';
+    final deepBg    = isDark ? '#1E2130' : '#EEF0F5';
+    final altBg     = isDark ? '#1A1A2E' : '#EEF0F5';
 
     const head = r'''<!DOCTYPE html>
 <html>
@@ -199,7 +223,7 @@ class _DiagramEditorScreenState extends State<DiagramEditorScreen> {
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;height:100%;background:#0F1017;overflow:hidden}
+html,body{width:100%;height:100%;background:__BG__;overflow:hidden}
 #cy{width:100vw;height:100vh}
 </style>
 </head>
@@ -551,7 +575,7 @@ function emitCode(){
     final name = widget.diagramName ?? 'Diagrama';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1017),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -614,20 +638,21 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1C1C2E),
-        border: Border(bottom: BorderSide(color: fsdBorderColor)),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
       ),
       child: Row(
         children: [
           // Back
           IconButton(
             tooltip: 'Volver',
-            icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                color: Colors.white, size: 18),
+            icon: Icon(Icons.arrow_back_ios_new_rounded,
+                color: cs.onSurface, size: 18),
             onPressed: onBack,
           ),
           // Name
@@ -635,8 +660,8 @@ class _TopBar extends StatelessWidget {
             child: Text(
               name,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 15,
               ),
@@ -696,13 +721,14 @@ class _ComponentPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      color: const Color(0xFF1C1C2E),
+      color: cs.surface,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // ── Top border line ───────────────────────────────────────────
-          Container(height: 1, color: fsdBorderColor),
+          Container(height: 1, color: cs.outlineVariant),
 
           // ── Components grid (slides in above the arrow) ───────────────
           AnimatedContainer(
@@ -765,13 +791,14 @@ class _ComponentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: item.onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF252838),
+          color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: fsdBorderColor),
+          border: Border.all(color: cs.outlineVariant),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

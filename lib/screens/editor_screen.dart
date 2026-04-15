@@ -7,7 +7,6 @@ import 'package:fsdmovil/services/srs_realtime_service.dart';
 import 'package:fsdmovil/services/srs_word_service.dart';
 
 const _pink = Color(0xFFE8365D);
-const _darkBg = Color(0xFF0F1017);
 const _cardBg = Color(0xFF252838);
 const _fieldBg = Color(0xFF252838);
 const _borderColor = Color(0xFF2A2D3A);
@@ -82,8 +81,18 @@ class _EditorScreenState extends State<EditorScreen> {
     for (final s in _formSections) {
       result.add({'value': s['id'] as String, 'label': s['title'] as String});
     }
-    result.add({'value': '_usuarios', 'label': 'Usuarios'});
-    result.add({'value': '_configuracion', 'label': 'Configuración'});
+    // Custom sections added by user
+    final customIds =
+        List<dynamic>.from(_docData['customSectionIds'] as List? ?? []);
+    for (final id in customIds) {
+      final section = _docData[id] as Map?;
+      if (section != null) {
+        result.add({
+          'value': id as String,
+          'label': (section['title'] ?? id) as String,
+        });
+      }
+    }
     return result;
   }
 
@@ -266,7 +275,7 @@ class _EditorScreenState extends State<EditorScreen> {
         _formSections = formSections;
         _selectedSectionId = formSections.isNotEmpty
             ? (formSections.first['id'] as String)
-            : '_usuarios';
+            : '';
         fullResponse = srsResponse;
         serverUpdatedAt = srsResponse['updated_at']?.toString();
         _projectCode =
@@ -614,13 +623,13 @@ class _EditorScreenState extends State<EditorScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: _cardBg,
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: const Text(
+        title: Text(
           'Enviar a revisión',
           style:
-              TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+              TextStyle(color: Theme.of(ctx).colorScheme.onSurface, fontWeight: FontWeight.w800),
         ),
         content: const Text(
           'Tus cambios se guardarán como una versión nueva y el dueño del proyecto podrá aceptarlos o rechazarlos. ¿Continuar?',
@@ -747,10 +756,10 @@ class _EditorScreenState extends State<EditorScreen> {
       iconWidget =
           const Icon(Icons.error_outline_rounded, size: 16, color: _pink);
     } else if (_isOwner) {
-      color = Colors.white;
+      color = Theme.of(context).colorScheme.onSurface;
       label = 'Guardar';
       iconWidget =
-          const Icon(Icons.save_outlined, size: 16, color: Colors.white);
+          Icon(Icons.save_outlined, size: 16, color: Theme.of(context).colorScheme.onSurface);
     } else {
       color = _pink;
       label = 'Enviar revisión';
@@ -790,14 +799,15 @@ class _EditorScreenState extends State<EditorScreen> {
         await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            backgroundColor: _cardBg,
+            backgroundColor: Theme.of(ctx).colorScheme.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
             ),
-            title: const Text(
+            title: Text(
               'Conflicto detectado',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                  color: Theme.of(ctx).colorScheme.onSurface,
+                  fontWeight: FontWeight.w800),
             ),
             content: Text(
               updatedBy == null || updatedBy.isEmpty
@@ -874,8 +884,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
     final labelWidget = Text(
       label + (isRequired ? ' *' : ''),
-      style: const TextStyle(
-        color: Colors.white,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface,
         fontSize: 14,
         fontWeight: FontWeight.w600,
       ),
@@ -911,7 +921,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   style: const TextStyle(color: _textGrey),
                 ),
                 style:
-                    const TextStyle(color: Colors.white, fontSize: 14),
+                    TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
                 items: options
                     .map((opt) => DropdownMenuItem<String>(
                           value: opt['value'] as String,
@@ -991,7 +1001,7 @@ class _EditorScreenState extends State<EditorScreen> {
               focusNode: focusNode,
               maxLines: maxLines,
               keyboardType: keyboardType,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: _dec(hint.isEmpty ? label : hint),
             ),
           ),
@@ -1031,14 +1041,15 @@ class _EditorScreenState extends State<EditorScreen> {
     return await showDialog<bool>(
           context: ctx,
           builder: (dCtx) => AlertDialog(
-            backgroundColor: _cardBg,
+            backgroundColor: Theme.of(dCtx).colorScheme.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
             ),
-            title: const Text(
+            title: Text(
               'Confirmar eliminación',
               style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800),
+                  color: Theme.of(dCtx).colorScheme.onSurface,
+                  fontWeight: FontWeight.w800),
             ),
             content: Text(
               '¿Seguro que deseas eliminar "$itemName"? Esta acción no se puede deshacer.',
@@ -1080,6 +1091,16 @@ class _EditorScreenState extends State<EditorScreen> {
     Map<String, dynamic> emptyItem() {
       final e = <String, dynamic>{};
       for (final f in itemFields) e[f['id'] as String] = '';
+      // Auto-generate requirement ID based on existing count
+      if (e.containsKey('id')) {
+        if (path == 'requirements.functional') {
+          final next = (items.length + 1).toString().padLeft(3, '0');
+          e['id'] = 'RF-$next';
+        } else if (path == 'requirements.nonFunctional') {
+          final next = (items.length + 1).toString().padLeft(3, '0');
+          e['id'] = 'RNF-$next';
+        }
+      }
       return e;
     }
 
@@ -1283,7 +1304,7 @@ class _EditorScreenState extends State<EditorScreen> {
                           child: TextField(
                             controller: c,
                             focusNode: focusNode,
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                             decoration: _dec(fieldLabel),
                           ),
                         ),
@@ -1297,9 +1318,9 @@ class _EditorScreenState extends State<EditorScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: _fieldBg,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _borderColor),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
                           child: const Icon(
                             Icons.lock_outline_rounded,
@@ -1339,9 +1360,9 @@ class _EditorScreenState extends State<EditorScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: _fieldBg,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _borderColor),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
                           child: const Icon(Icons.close_rounded,
                               size: 16, color: _textGrey),
@@ -1392,7 +1413,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       child: TextField(
                         controller: draftCtrl,
                         autofocus: true,
-                        style: const TextStyle(color: Colors.white),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                         decoration: _dec('$itemLabel nuevo'),
                       ),
                     ),
@@ -1501,6 +1522,9 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_selectedSectionId == '_configuracion') {
       return _buildConfiguracionSection();
     }
+    if (_selectedSectionId.startsWith('custom_')) {
+      return _buildCustomSectionContent(_selectedSectionId);
+    }
 
     final sectionConfig = _formSections.cast<Map>().firstWhere(
           (s) => s['id'] == _selectedSectionId,
@@ -1518,7 +1542,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
       if (i > 0) {
         widgets.add(const SizedBox(height: 24));
-        widgets.add(const Divider(color: _borderColor, height: 1));
+        widgets.add(Divider(color: Theme.of(context).colorScheme.outlineVariant, height: 1));
         widgets.add(const SizedBox(height: 20));
       }
 
@@ -1554,6 +1578,405 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  // ── Custom section renderer ───────────────────────────────────────────────
+
+  Widget _buildCustomSectionContent(String sectionId) {
+    final section =
+        Map<String, dynamic>.from(_docData[sectionId] as Map? ?? {});
+    final title = (section['title'] ?? sectionId) as String;
+    final subIds =
+        List<dynamic>.from(section['subsectionIds'] as List? ?? []);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Section header ──────────────────────────────────────────
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title.toUpperCase(),
+                style: const TextStyle(
+                  color: _textGrey,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: () async {
+                final confirmed = await _confirmDelete(context, title);
+                if (!confirmed) return;
+                setState(() {
+                  final ids = List<dynamic>.from(
+                      _docData['customSectionIds'] as List? ?? []);
+                  ids.remove(sectionId);
+                  _docData['customSectionIds'] = ids;
+                  // Clean up controllers for all subsections
+                  final sec = Map<String, dynamic>.from(
+                      _docData[sectionId] as Map? ?? {});
+                  for (final subId
+                      in List<dynamic>.from(
+                          sec['subsectionIds'] as List? ?? [])) {
+                    _ctrl.remove('$sectionId.$subId.content')?.dispose();
+                    _focusNodes
+                        .remove('$sectionId.$subId.content')
+                        ?.dispose();
+                  }
+                  _docData.remove(sectionId);
+                  _selectedSectionId = _sections.isNotEmpty
+                      ? _sections.first['value']!
+                      : '';
+                });
+                _scheduleRealtimeSync();
+              },
+              child: const Icon(Icons.delete_outline_rounded,
+                  color: _textGrey, size: 18),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // ── Subsections ─────────────────────────────────────────────
+        if (subIds.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(
+              'Aún no hay subsecciones. Agrega una para comenzar.',
+              style: const TextStyle(
+                  color: _textGrey, fontSize: 13, height: 1.4),
+            ),
+          ),
+
+        for (var i = 0; i < subIds.length; i++) ...[
+          if (i > 0) ...[
+            const SizedBox(height: 20),
+            Divider(color: Theme.of(context).colorScheme.outlineVariant, height: 1),
+            const SizedBox(height: 20),
+          ],
+          _buildCustomSubsection(sectionId, subIds[i] as String),
+        ],
+
+        const SizedBox(height: 20),
+        // ── Add subsection button ───────────────────────────────────
+        _buildAddButton('Agregar subsección', () {
+          _showAddSubsectionDialog(sectionId);
+        }),
+      ],
+    );
+  }
+
+  Widget _buildCustomSubsection(String sectionId, String subId) {
+    final section =
+        Map<String, dynamic>.from(_docData[sectionId] as Map? ?? {});
+    final sub =
+        Map<String, dynamic>.from(section[subId] as Map? ?? {});
+    final subTitle = (sub['title'] ?? subId) as String;
+    final contentPath = '$sectionId.$subId.content';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                subTitle,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: () async {
+                final confirmed =
+                    await _confirmDelete(context, subTitle);
+                if (!confirmed) return;
+                setState(() {
+                  final sec = Map<String, dynamic>.from(
+                      _docData[sectionId] as Map? ?? {});
+                  final ids = List<dynamic>.from(
+                      sec['subsectionIds'] as List? ?? []);
+                  ids.remove(subId);
+                  sec['subsectionIds'] = ids;
+                  sec.remove(subId);
+                  _docData[sectionId] = sec;
+                  _ctrl.remove(contentPath)?.dispose();
+                  _focusNodes.remove(contentPath)?.dispose();
+                });
+                _scheduleRealtimeSync();
+              },
+              child: const Icon(Icons.delete_outline_rounded,
+                  color: _textGrey, size: 16),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _buildField({
+          'path': contentPath,
+          'label': 'Contenido',
+          'type': 'textarea',
+          'rows': 4,
+          'placeholder': 'Escribe el contenido...',
+        }),
+      ],
+    );
+  }
+
+  void _showAddSubsectionDialog(String sectionId) {
+    final titleCtrl = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          backgroundColor: cs.surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22)),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          title: Row(
+            children: [
+              const Icon(Icons.add_box_outlined, color: _pink, size: 22),
+              const SizedBox(width: 10),
+              Text(
+                'Nueva subsección',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Dale un título a esta subsección.',
+                style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                    fontSize: 13,
+                    height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: titleCtrl,
+                autofocus: true,
+                style: TextStyle(color: cs.onSurface, fontSize: 14),
+                cursorColor: _pink,
+                decoration: InputDecoration(
+                  hintText: 'Ej: Objetivo, Alcance...',
+                  hintStyle: TextStyle(
+                      color: cs.onSurface.withValues(alpha: 0.4),
+                      fontSize: 14),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: cs.outlineVariant),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: cs.outlineVariant),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide:
+                        const BorderSide(color: _pink, width: 1.5),
+                  ),
+                ),
+                onSubmitted: (_) =>
+                    _submitNewSubsection(ctx, sectionId, titleCtrl),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(
+                foregroundColor: cs.onSurface.withValues(alpha: 0.55),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Cancelar',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () =>
+                  _submitNewSubsection(ctx, sectionId, titleCtrl),
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Agregar',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _pink,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _submitNewSubsection(
+      BuildContext ctx, String sectionId, TextEditingController titleCtrl) {
+    final title = titleCtrl.text.trim();
+    if (title.isEmpty) return;
+    final subId = 'sub_${DateTime.now().millisecondsSinceEpoch}';
+    setState(() {
+      final sec = Map<String, dynamic>.from(
+          _docData[sectionId] as Map? ?? {});
+      final ids =
+          List<dynamic>.from(sec['subsectionIds'] as List? ?? []);
+      ids.add(subId);
+      sec['subsectionIds'] = ids;
+      sec[subId] = {'title': title, 'content': ''};
+      _docData[sectionId] = sec;
+    });
+    _scheduleRealtimeSync();
+    Navigator.pop(ctx);
+  }
+
+  // ── Add section dialog ────────────────────────────────────────────────────
+
+  void _showAddSectionDialog() {
+    final titleCtrl = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          backgroundColor: cs.surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22)),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          title: Row(
+            children: [
+              const Icon(Icons.post_add_rounded, color: _pink, size: 22),
+              const SizedBox(width: 10),
+              Text(
+                'Nueva sección',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Dale un nombre a tu sección personalizada.',
+                style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                    fontSize: 13,
+                    height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: titleCtrl,
+                autofocus: true,
+                style: TextStyle(color: cs.onSurface, fontSize: 14),
+                cursorColor: _pink,
+                decoration: InputDecoration(
+                  hintText: 'Ej: Glosario, Restricciones...',
+                  hintStyle: TextStyle(
+                      color: cs.onSurface.withValues(alpha: 0.4),
+                      fontSize: 14),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: cs.outlineVariant),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: cs.outlineVariant),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide:
+                        const BorderSide(color: _pink, width: 1.5),
+                  ),
+                ),
+                onSubmitted: (_) => _submitNewSection(ctx, titleCtrl),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(
+                foregroundColor: cs.onSurface.withValues(alpha: 0.55),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Cancelar',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => _submitNewSection(ctx, titleCtrl),
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Crear',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _pink,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _submitNewSection(
+      BuildContext ctx, TextEditingController titleCtrl) {
+    final title = titleCtrl.text.trim();
+    if (title.isEmpty) return;
+    final id =
+        'custom_${DateTime.now().millisecondsSinceEpoch}';
+    setState(() {
+      final ids = List<dynamic>.from(
+          _docData['customSectionIds'] as List? ?? []);
+      ids.add(id);
+      _docData['customSectionIds'] = ids;
+      _docData[id] = {'title': title, 'description': ''};
+      _selectedSectionId = id;
+    });
+    _scheduleRealtimeSync();
+    Navigator.pop(ctx);
+  }
+
   // ── Usuarios section ──────────────────────────────────────────────────────
 
   Widget _buildUsuariosSection() {
@@ -1572,9 +1995,9 @@ class _EditorScreenState extends State<EditorScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _fieldBg,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _borderColor),
+              border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
             ),
             child: const Row(
               children: [
@@ -1629,8 +2052,8 @@ class _EditorScreenState extends State<EditorScreen> {
                         children: [
                           Text(
                             user.name,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
                               fontWeight: FontWeight.w600,
                               fontSize: 14,
                             ),
@@ -1706,10 +2129,10 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Validación al guardar',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -1750,8 +2173,10 @@ class _EditorScreenState extends State<EditorScreen> {
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     final sections = _sections;
 
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF1C1C1E),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: loading
             ? const Center(child: CircularProgressIndicator(color: _pink))
@@ -1762,7 +2187,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       child: Text(
                         errorMessage!,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white),
+                        style: TextStyle(color: cs.onSurface),
                       ),
                     ),
                   )
@@ -1771,17 +2196,17 @@ class _EditorScreenState extends State<EditorScreen> {
                       Container(
                         padding:
                             const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           border: Border(
-                              bottom: BorderSide(color: _borderColor)),
+                              bottom: BorderSide(color: cs.outlineVariant)),
                         ),
                         child: Row(
                           children: [
                             IconButton(
                               onPressed: () => context.pop(),
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.arrow_back_ios_new_rounded,
-                                color: Colors.white,
+                                color: cs.onSurface,
                                 size: 20,
                               ),
                               padding: EdgeInsets.zero,
@@ -1789,19 +2214,32 @@ class _EditorScreenState extends State<EditorScreen> {
                             ),
                             const Spacer(),
                             PopupMenuButton<String>(
-                              color: _cardBg,
+                              color: cs.surface,
                               shape: RoundedRectangleBorder(
                                 borderRadius:
                                     BorderRadius.circular(14),
-                                side: const BorderSide(
-                                    color: _borderColor),
+                                side: BorderSide(
+                                    color: cs.outlineVariant),
                               ),
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.more_vert_rounded,
-                                color: Colors.white,
+                                color: cs.onSurface,
                               ),
-                              onSelected: (value) {
+                              onSelected: (value) async {
                                 if (value == 'preview') {
+                                  _debounceTimer?.cancel();
+                                  try {
+                                    await ApiService.updateProjectSrs(
+                                      widget.projectId,
+                                      {
+                                        'srs_data': _docData,
+                                        if (_projectCode != null)
+                                          'projectCode': _projectCode,
+                                      },
+                                    );
+                                  } catch (_) {}
+                                  if (!mounted) return;
+                                  // ignore: use_build_context_synchronously
                                   context.push(
                                       '/preview/${widget.projectId}');
                                 } else if (value == 'download') {
@@ -1809,20 +2247,20 @@ class _EditorScreenState extends State<EditorScreen> {
                                 }
                               },
                               itemBuilder: (_) => [
-                                const PopupMenuItem(
+                                PopupMenuItem(
                                   value: 'preview',
                                   child: Row(
                                     children: [
                                       Icon(
                                         Icons.visibility_outlined,
-                                        color: Colors.white,
+                                        color: cs.onSurface,
                                         size: 18,
                                       ),
-                                      SizedBox(width: 10),
+                                      const SizedBox(width: 10),
                                       Text(
                                         'Vista previa',
                                         style: TextStyle(
-                                            color: Colors.white),
+                                            color: cs.onSurface),
                                       ),
                                     ],
                                   ),
@@ -1842,9 +2280,9 @@ class _EditorScreenState extends State<EditorScreen> {
                                                 color: _pink,
                                               ),
                                             )
-                                          : const Icon(
+                                          : Icon(
                                               Icons.download_outlined,
-                                              color: Colors.white,
+                                              color: cs.onSurface,
                                               size: 18,
                                             ),
                                       const SizedBox(width: 10),
@@ -1852,8 +2290,8 @@ class _EditorScreenState extends State<EditorScreen> {
                                         _downloading
                                             ? 'Generando...'
                                             : 'Descargar DOCX',
-                                        style: const TextStyle(
-                                            color: Colors.white),
+                                        style: TextStyle(
+                                            color: cs.onSurface),
                                       ),
                                     ],
                                   ),
@@ -1867,9 +2305,9 @@ class _EditorScreenState extends State<EditorScreen> {
                       Container(
                         padding:
                             const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           border: Border(
-                              bottom: BorderSide(color: _borderColor)),
+                              bottom: BorderSide(color: cs.outlineVariant)),
                         ),
                         child: Row(
                           children: [
@@ -1891,6 +2329,72 @@ class _EditorScreenState extends State<EditorScreen> {
                               icon: Icons.auto_awesome_rounded,
                               active: _editorMode == 'ai',
                               onTap: () => setState(() => _editorMode = 'ai'),
+                            ),
+                            const SizedBox(width: 4),
+                            PopupMenuButton<String>(
+                              color: cs.surface,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                side: BorderSide(color: cs.outlineVariant),
+                              ),
+                              padding: EdgeInsets.zero,
+                              icon: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: (_selectedSectionId == '_usuarios' ||
+                                          _selectedSectionId == '_configuracion')
+                                      ? _pink
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: (_selectedSectionId == '_usuarios' ||
+                                            _selectedSectionId ==
+                                                '_configuracion')
+                                        ? _pink
+                                        : cs.outlineVariant,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.more_horiz_rounded,
+                                  size: 16,
+                                  color: (_selectedSectionId == '_usuarios' ||
+                                          _selectedSectionId == '_configuracion')
+                                      ? Colors.white
+                                      : cs.onSurface,
+                                ),
+                              ),
+                              onSelected: (val) {
+                                setState(() {
+                                  _editorMode = 'form';
+                                  _selectedSectionId = val;
+                                });
+                              },
+                              itemBuilder: (_) => [
+                                PopupMenuItem<String>(
+                                  value: '_usuarios',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.people_outline_rounded,
+                                          color: cs.onSurface, size: 18),
+                                      const SizedBox(width: 10),
+                                      Text('Usuarios',
+                                          style: TextStyle(color: cs.onSurface)),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: '_configuracion',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.settings_outlined,
+                                          color: cs.onSurface, size: 18),
+                                      const SizedBox(width: 10),
+                                      Text('Configuración',
+                                          style: TextStyle(color: cs.onSurface)),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                             const Spacer(),
                             // Presence avatars
@@ -1966,32 +2470,49 @@ class _EditorScreenState extends State<EditorScreen> {
                                       ? _selectedSectionId
                                       : null,
                                   isExpanded: true,
-                                  dropdownColor: Theme.of(context).colorScheme.surface,
+                                  dropdownColor: cs.surface,
                                   iconEnabledColor: _textGrey,
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    color: cs.onSurface,
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
                                   ),
-                                  items: sections
-                                      .map((s) =>
-                                          DropdownMenuItem<String>(
-                                            value: s['value'],
-                                            child:
-                                                Text(s['label']!),
-                                          ))
-                                      .toList(),
+                                  items: [
+                                    ...sections.map((s) =>
+                                        DropdownMenuItem<String>(
+                                          value: s['value'],
+                                          child: Text(s['label']!),
+                                        )),
+                                    DropdownMenuItem<String>(
+                                      value: '_new_section',
+                                      child: Row(
+                                        children: const [
+                                          Icon(Icons.add_rounded,
+                                              color: _pink, size: 16),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Nueva sección',
+                                            style: TextStyle(
+                                              color: _pink,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                   onChanged: (val) {
-                                    if (val != null) {
+                                    if (val == '_new_section') {
+                                      _showAddSectionDialog();
+                                    } else if (val != null) {
                                       setState(() =>
-                                          _selectedSectionId =
-                                              val);
+                                          _selectedSectionId = val);
                                     }
                                   },
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 10),
                             Container(
                               padding: const EdgeInsets.all(18),
                               decoration: BoxDecoration(
@@ -2476,6 +2997,7 @@ class _JsonViewState extends State<_JsonView> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final text = _prettyJson(widget.data);
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
@@ -2483,16 +3005,16 @@ class _JsonViewState extends State<_JsonView> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: _darkBg,
+            color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _borderColor),
+            border: Border.all(color: cs.outlineVariant),
           ),
           child: SelectableText(
             text,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'monospace',
               fontSize: 12.5,
-              color: Color(0xFFCDD3DE),
+              color: cs.onSurface,
               height: 1.6,
             ),
           ),
@@ -2544,15 +3066,16 @@ class _AiViewState extends State<_AiView> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
       children: [
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: _cardBg,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _borderColor),
+            border: Border.all(color: cs.outlineVariant),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2572,20 +3095,20 @@ class _AiViewState extends State<_AiView> {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Generación con IA',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: cs.onSurface,
                             fontWeight: FontWeight.w800,
                             fontSize: 16,
                           ),
                         ),
-                        SizedBox(height: 2),
-                        Text(
+                        const SizedBox(height: 2),
+                        const Text(
                           'Genera el SRS completo automáticamente',
                           style: TextStyle(
                             color: _textGrey,
@@ -2652,7 +3175,7 @@ class _AiViewState extends State<_AiView> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _pink,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: _borderColor,
+                    disabledBackgroundColor: Theme.of(context).colorScheme.outlineVariant,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -2828,7 +3351,7 @@ class _RealtimeStatusCard extends StatelessWidget {
                 GestureDetector(
                   onTap: () => showModalBottomSheet(
                     context: context,
-                    backgroundColor: _cardBg,
+                    backgroundColor: Theme.of(context).colorScheme.surface,
                     shape: const RoundedRectangleBorder(
                       borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
                     ),

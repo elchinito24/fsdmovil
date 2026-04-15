@@ -622,6 +622,7 @@ class PersistentShell extends StatelessWidget {
     TopNavItem.reviews,
     TopNavItem.diagrams,
     TopNavItem.history,
+    TopNavItem.schedule,
   ];
 
   String _buildInitials() {
@@ -656,7 +657,7 @@ class PersistentShell extends StatelessWidget {
     final currentPath = GoRouterState.of(context).uri.path;
     const _rootPaths = {
       '/dashboard', '/workspaces', '/projects', '/documents',
-      '/reviews', '/diagrams', '/history', '/meeting-mode',
+      '/reviews', '/diagrams', '/history', '/meeting-mode', '/schedule',
     };
     final isSubPage = !_rootPaths.contains(currentPath);
 

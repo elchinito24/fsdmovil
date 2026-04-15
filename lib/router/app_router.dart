@@ -25,6 +25,7 @@ import 'package:fsdmovil/screens/meeting_mode_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_lobby_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_room_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_ai_result_screen.dart';
+import 'package:fsdmovil/screens/schedule_screen.dart';
 
 final routeObserver = RouteObserver<PageRoute<dynamic>>();
 
@@ -135,6 +136,12 @@ final appRouter = GoRouter(
           GoRoute(
             path: '/history',
             builder: (c, s) => const HistoryScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/schedule',
+            builder: (c, s) => const ScheduleScreen(),
           ),
         ]),
         StatefulShellBranch(routes: [

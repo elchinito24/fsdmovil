@@ -177,8 +177,7 @@ class _FilterChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
+    final borderColor = Theme.of(context).colorScheme.outlineVariant;
 
     final chips = <Widget>[
       _Chip(
@@ -319,10 +318,10 @@ class _DiagramCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? fsdCardBg : Colors.white;
-    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
+    final cs = Theme.of(context).colorScheme;
+    final cardBg = cs.surface;
+    final borderColor = cs.outlineVariant;
+    final titleColor = cs.onSurface;
 
     final rawType = (diagram['diagram_type'] ?? diagram['type'] ?? '').toString();
     final name = (diagram['name'] ?? 'Sin título').toString();
@@ -415,9 +414,7 @@ class _DiagramCard extends StatelessWidget {
               margin: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               height: 80,
               decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF0F1017)
-                    : const Color(0xFFF0F2F8),
+                color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: borderColor),
               ),
@@ -586,11 +583,11 @@ class _CreateDiagramDialogState extends State<_CreateDiagramDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF1E2130) : Colors.white;
-    final border = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
-    final labelColor = isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280);
-    final textColor = isDark ? Colors.white : const Color(0xFF151823);
+    final cs = Theme.of(context).colorScheme;
+    final bg = cs.surface;
+    final border = cs.outlineVariant;
+    final labelColor = fsdTextGrey;
+    final textColor = cs.onSurface;
 
     return Dialog(
       backgroundColor: bg,
@@ -631,7 +628,7 @@ class _CreateDiagramDialogState extends State<_CreateDiagramDialog> {
                   hintText: 'Ej: Flujo de autenticación',
                   hintStyle: TextStyle(color: labelColor),
                   filled: true,
-                  fillColor: isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB),
+                  fillColor: cs.surfaceContainerHighest,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: border),
@@ -669,7 +666,6 @@ class _CreateDiagramDialogState extends State<_CreateDiagramDialog> {
                       items: _projects
                           .map((p) => p['name'].toString())
                           .toList(),
-                      isDark: isDark,
                       border: border,
                       labelColor: labelColor,
                       textColor: textColor,
@@ -696,7 +692,6 @@ class _CreateDiagramDialogState extends State<_CreateDiagramDialog> {
                         .firstOrNull,
                 hint: 'Selecciona el tipo...',
                 items: _diagramTypes.map((t) => t.label).toList(),
-                isDark: isDark,
                 border: border,
                 labelColor: labelColor,
                 textColor: textColor,
@@ -789,7 +784,6 @@ class _DropdownField extends StatelessWidget {
   final String? value;
   final String hint;
   final List<String> items;
-  final bool isDark;
   final Color border;
   final Color labelColor;
   final Color textColor;
@@ -799,7 +793,6 @@ class _DropdownField extends StatelessWidget {
     required this.value,
     required this.hint,
     required this.items,
-    required this.isDark,
     required this.border,
     required this.labelColor,
     required this.textColor,
@@ -808,10 +801,11 @@ class _DropdownField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB),
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: border),
       ),
@@ -820,7 +814,7 @@ class _DropdownField extends StatelessWidget {
         hint: Text(hint, style: TextStyle(color: labelColor, fontSize: 14)),
         underline: const SizedBox(),
         isExpanded: true,
-        dropdownColor: isDark ? const Color(0xFF1E2130) : Colors.white,
+        dropdownColor: cs.surface,
         icon: Icon(Icons.keyboard_arrow_down_rounded, color: labelColor),
         items: items
             .map((item) => DropdownMenuItem(
@@ -855,10 +849,10 @@ class _EmptyState extends StatelessWidget {
               color: fsdTextGrey.withOpacity(0.4),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Sin diagramas',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 18,
               ),
@@ -892,10 +886,10 @@ class _NoResultsState extends StatelessWidget {
               color: fsdTextGrey.withOpacity(0.4),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Sin resultados',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 17,
               ),
@@ -933,10 +927,10 @@ class _ErrorState extends StatelessWidget {
               color: fsdPink,
             ),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Error al cargar',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 17,
               ),

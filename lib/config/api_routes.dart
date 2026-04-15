@@ -21,4 +21,9 @@ class ApiRoutes {
   // Users
   static const String users = '/users';
   static String user(String id) => '/users/$id';
+
+  // Tasks
+  static const String tasks = '/tasks';
+  static String task(String id) => '/tasks/$id';
+  static String tasksByProject(String projectId) => '/tasks/?project=$projectId';
 }

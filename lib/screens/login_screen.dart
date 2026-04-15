@@ -146,14 +146,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           width: 50,
                           height: 50,
                         ),
-                        const Text(
-                          'FSD',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        // const Text(
+                        //   'FSD',
+                        //   style: TextStyle(
+                        //     color: Colors.white,
+                        //     fontSize: 18,
+                        //     fontWeight: FontWeight.bold,
+                        //   ),
+                        // ),
                       ],
                     ),
                     const SizedBox(height: 40),
