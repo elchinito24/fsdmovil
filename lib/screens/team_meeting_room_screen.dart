@@ -379,7 +379,9 @@ class _TeamMeetingRoomScreenState extends State<TeamMeetingRoomScreen> {
                                   )
                                 : const Icon(Icons.stop_circle_outlined),
                             label: Text(
-                              _endingMeeting ? 'Finalizando...' : 'Finalizar',
+                              _endingMeeting
+                                  ? 'Finalizando...'
+                                  : 'Finalizar reunión',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
                               ),
@@ -404,22 +406,181 @@ class _TeamMeetingRoomScreenState extends State<TeamMeetingRoomScreen> {
   }
 }
 
-class _Card extends StatelessWidget {
-  final Widget child;
+class _DocumentPreviewSheet extends StatelessWidget {
+  final Map<String, dynamic> data;
 
-  const _Card({required this.child});
+  const _DocumentPreviewSheet({required this.data});
+
+  List<String> _stringList(dynamic value) {
+    if (value is List) {
+      return value
+          .map((e) => e.toString())
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
+    }
+    return [];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final project = Map<String, dynamic>.from(
+      data['project'] ?? <String, dynamic>{},
+    );
+    final session = Map<String, dynamic>.from(
+      data['session'] ?? <String, dynamic>{},
+    );
+    final preview = Map<String, dynamic>.from(
+      data['srs_preview'] ?? <String, dynamic>{},
+    );
+
+    final functional = _stringList(preview['functional_requirements']);
+    final nonFunctional = _stringList(preview['non_functional_requirements']);
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.88,
+      decoration: const BoxDecoration(
+        color: Color(0xFF10121A),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 46,
+            height: 5,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (project['name'] ?? 'Documento SRS').toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${project['code'] ?? ''} • ${(session['title'] ?? '').toString()}',
+                    style: const TextStyle(color: _textGrey, height: 1.45),
+                  ),
+                  const SizedBox(height: 18),
+                  _PreviewListBlock(
+                    title: 'Requerimientos funcionales',
+                    items: functional,
+                  ),
+                  const SizedBox(height: 14),
+                  _PreviewListBlock(
+                    title: 'Requerimientos no funcionales',
+                    items: nonFunctional,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewListBlock extends StatelessWidget {
+  final String title;
+  final List<String> items;
+
+  const _PreviewListBlock({required this.title, required this.items});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: _cardBg,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _borderColor),
       ),
-      child: child,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (items.isEmpty)
+            const Text('Sin datos.', style: TextStyle(color: _textGrey))
+          else
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '• $item',
+                  style: const TextStyle(color: _textGrey, height: 1.45),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ParticipantCard extends StatelessWidget {
+  final String name;
+  final bool isLocal;
+
+  const _ParticipantCard({required this.name, required this.isLocal});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: const Color(0x22E8365D),
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: const TextStyle(color: _pink, fontWeight: FontWeight.w900),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          if (isLocal)
+            const Text(
+              'Tú',
+              style: TextStyle(color: _pink, fontWeight: FontWeight.w800),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -450,53 +611,10 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _ParticipantCard extends StatelessWidget {
-  final String name;
-  final bool isLocal;
+class _Card extends StatelessWidget {
+  final Widget child;
 
-  const _ParticipantCard({required this.name, required this.isLocal});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0x22E8365D),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.person_rounded, color: _pink),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              isLocal ? '$name (tú)' : name,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  final String message;
-
-  const _ErrorState({required this.message});
+  const _Card({required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -508,6 +626,19 @@ class _ErrorState extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: _borderColor),
       ),
+      child: child,
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+
+  const _ErrorState({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
       child: Text(
         message,
         style: const TextStyle(
@@ -515,219 +646,6 @@ class _ErrorState extends StatelessWidget {
           fontWeight: FontWeight.w700,
           height: 1.45,
         ),
-      ),
-    );
-  }
-}
-
-class _DocumentPreviewSheet extends StatelessWidget {
-  final Map<String, dynamic> data;
-
-  const _DocumentPreviewSheet({required this.data});
-
-  List<String> _stringList(dynamic value) {
-    if (value is List) {
-      return value
-          .map((e) => e.toString())
-          .where((e) => e.trim().isNotEmpty)
-          .toList();
-    }
-    return [];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final preview = Map<String, dynamic>.from(
-      data['document_preview'] ?? <String, dynamic>{},
-    );
-
-    final functional = _stringList(preview['functional_requirements']);
-    final nonFunctional = _stringList(preview['non_functional_requirements']);
-    final meetingTasks = _stringList(preview['meeting_tasks']);
-    final productFunctions = _stringList(preview['product_functions']);
-    final userClasses = _stringList(preview['user_classes']);
-
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.88,
-      decoration: const BoxDecoration(
-        color: Color(0xFF10121A),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 46,
-            height: 5,
-            decoration: BoxDecoration(
-              color: Colors.white24,
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    (data['project_name'] ?? 'Documento SRS').toString(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${data['project_code'] ?? ''} • ${data['workspace_name'] ?? ''}',
-                    style: const TextStyle(color: _textGrey, height: 1.45),
-                  ),
-                  const SizedBox(height: 18),
-                  _PreviewBlock(
-                    title: 'Propósito',
-                    body: (preview['purpose'] ?? '').toString(),
-                  ),
-                  const SizedBox(height: 14),
-                  _PreviewBlock(
-                    title: 'Alcance',
-                    body: (preview['scope'] ?? '').toString(),
-                  ),
-                  const SizedBox(height: 14),
-                  _PreviewBlock(
-                    title: 'Perspectiva del producto',
-                    body: (preview['product_perspective'] ?? '').toString(),
-                  ),
-                  const SizedBox(height: 14),
-                  _PreviewListBlock(
-                    title: 'Funciones del producto',
-                    items: productFunctions,
-                  ),
-                  const SizedBox(height: 14),
-                  _PreviewListBlock(
-                    title: 'Clases de usuario',
-                    items: userClasses,
-                  ),
-                  const SizedBox(height: 14),
-                  _PreviewListBlock(
-                    title: 'Requerimientos funcionales',
-                    items: functional,
-                  ),
-                  const SizedBox(height: 14),
-                  _PreviewListBlock(
-                    title: 'Requerimientos no funcionales',
-                    items: nonFunctional,
-                  ),
-                  const SizedBox(height: 14),
-                  _PreviewListBlock(
-                    title: 'Tareas registradas',
-                    items: meetingTasks,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PreviewBlock extends StatelessWidget {
-  final String title;
-  final String body;
-
-  const _PreviewBlock({required this.title, required this.body});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            body.trim().isEmpty ? 'Sin información disponible.' : body,
-            style: const TextStyle(color: _textGrey, height: 1.45),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PreviewListBlock extends StatelessWidget {
-  final String title;
-  final List<String> items;
-
-  const _PreviewListBlock({required this.title, required this.items});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (items.isEmpty)
-            const Text(
-              'Sin elementos disponibles.',
-              style: TextStyle(color: _textGrey, height: 1.45),
-            )
-          else
-            ...items.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(top: 6),
-                      child: Icon(Icons.circle, color: _pink, size: 8),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        item,
-                        style: const TextStyle(color: _textGrey, height: 1.45),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }

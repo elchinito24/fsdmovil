@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
-import 'package:fsdmovil/services/auth_service.dart';
 import 'package:fsdmovil/widgets/main_app_shell.dart';
 
 const _pink = Color(0xFFE8365D);
@@ -30,13 +29,9 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
   Map<String, dynamic>? sessionData;
 
   final TextEditingController _summaryController = TextEditingController();
-  final TextEditingController _transcriptController = TextEditingController();
   final TextEditingController _functionalController = TextEditingController();
   final TextEditingController _nonFunctionalController =
       TextEditingController();
-  final TextEditingController _tasksController = TextEditingController();
-
-  bool _controllersInitialized = false;
 
   @override
   void initState() {
@@ -47,10 +42,8 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
   @override
   void dispose() {
     _summaryController.dispose();
-    _transcriptController.dispose();
     _functionalController.dispose();
     _nonFunctionalController.dispose();
-    _tasksController.dispose();
     super.dispose();
   }
 
@@ -60,7 +53,7 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
 
       if (!mounted) return;
 
-      _setControllersFromSession(detail, force: true);
+      _setControllersFromSession(detail);
 
       setState(() {
         sessionData = detail;
@@ -77,41 +70,53 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
     }
   }
 
-  void _setControllersFromSession(
-    Map<String, dynamic> detail, {
-    bool force = false,
-  }) {
-    final summary = (detail['summary'] ?? '').toString();
-    final transcript = (detail['transcript'] ?? '').toString();
-    final functional = _stringList(detail['functional_requirements']);
-    final nonFunctional = _stringList(detail['non_functional_requirements']);
-    final tasks = _stringList(detail['tasks']);
+  String _sanitizeSummary(dynamic raw) {
+    final text = (raw ?? '').toString().trim();
 
-    if (!_controllersInitialized || force) {
-      _summaryController.text = summary;
-      _transcriptController.text = transcript;
-      _functionalController.text = functional.join('\n');
-      _nonFunctionalController.text = nonFunctional.join('\n');
-      _tasksController.text = tasks.join('\n');
-      _controllersInitialized = true;
-      return;
+    if (text.isEmpty) return '';
+
+    final lower = text.toLowerCase();
+
+    final looksLikeJson =
+        text.startsWith('{') ||
+        text.startsWith('```') ||
+        lower.contains('"functional_requirements"') ||
+        lower.contains('"non_functional_requirements"') ||
+        lower.contains('"tasks"');
+
+    if (looksLikeJson) {
+      return 'Sin resumen generado.';
     }
 
-    _summaryController.text = summary;
-    _transcriptController.text = transcript;
-    _functionalController.text = functional.join('\n');
-    _nonFunctionalController.text = nonFunctional.join('\n');
-    _tasksController.text = tasks.join('\n');
+    return text;
   }
 
   List<String> _stringList(dynamic value) {
     if (value is List) {
       return value
-          .map((e) => e.toString().trim())
+          .map((e) {
+            if (e is Map) {
+              final description = (e['description'] ?? '').toString().trim();
+              final title = (e['title'] ?? '').toString().trim();
+              if (description.isNotEmpty) return description;
+              if (title.isNotEmpty) return title;
+            }
+            return e.toString().trim();
+          })
           .where((e) => e.isNotEmpty)
           .toList();
     }
     return [];
+  }
+
+  void _setControllersFromSession(Map<String, dynamic> detail) {
+    final summary = _sanitizeSummary(detail['summary']);
+    final functional = _stringList(detail['functional_requirements']);
+    final nonFunctional = _stringList(detail['non_functional_requirements']);
+
+    _summaryController.text = summary;
+    _functionalController.text = functional.join('\n');
+    _nonFunctionalController.text = nonFunctional.join('\n');
   }
 
   List<String> _linesToList(String value) {
@@ -123,8 +128,13 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
   }
 
   bool get _isHost {
-    final hostUserId = sessionData?['host_user'];
-    return hostUserId == AuthService.userId;
+    return sessionData?['is_host_for_current_user'] == true;
+  }
+
+  int? get _projectId {
+    final raw = sessionData?['project'];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '');
   }
 
   String get _aiStatus {
@@ -137,10 +147,8 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
 
   bool get _hasAiResult {
     return _summaryController.text.trim().isNotEmpty ||
-        _transcriptController.text.trim().isNotEmpty ||
         _functionalController.text.trim().isNotEmpty ||
-        _nonFunctionalController.text.trim().isNotEmpty ||
-        _tasksController.text.trim().isNotEmpty;
+        _nonFunctionalController.text.trim().isNotEmpty;
   }
 
   Future<void> _processWithAi() async {
@@ -162,23 +170,12 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
         successMessage = 'La reunión fue procesada correctamente con IA.';
       });
 
-      _setControllersFromSession(result, force: true);
+      _setControllersFromSession(result);
     } catch (e) {
       if (!mounted) return;
 
-      final clean = e.toString().replaceFirst('Exception: ', '');
-
-      String friendly = clean;
-      if (clean.contains('La grabación aún se está finalizando')) {
-        friendly =
-            'La grabación todavía se está cerrando. Espera unos segundos e inténtalo de nuevo.';
-      } else if (clean.contains('todavía no se encontró el archivo de audio')) {
-        friendly =
-            'El audio aún no aparece listo en la nube. Espera unos segundos y vuelve a intentarlo.';
-      }
-
       setState(() {
-        errorMessage = friendly;
+        errorMessage = e.toString().replaceFirst('Exception: ', '');
       });
     } finally {
       if (!mounted) return;
@@ -202,10 +199,10 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
       final result = await ApiService.applyTeamMeetingAiToSrs(
         sessionId: widget.sessionId,
         summary: _summaryController.text.trim(),
-        transcript: _transcriptController.text.trim(),
+        transcript: '',
         functionalRequirements: _linesToList(_functionalController.text),
         nonFunctionalRequirements: _linesToList(_nonFunctionalController.text),
-        tasks: _linesToList(_tasksController.text),
+        tasks: const [],
       );
 
       if (!mounted) return;
@@ -219,7 +216,7 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
       });
 
       if (session.isNotEmpty) {
-        _setControllersFromSession(session, force: true);
+        _setControllersFromSession(session);
       }
     } catch (e) {
       if (!mounted) return;
@@ -265,6 +262,7 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
             children: [
               _StatusChip(text: 'Grabación: $_recordingStatus'),
               _StatusChip(text: 'IA: $_aiStatus'),
+              _StatusChip(text: _isHost ? 'Rol: Líder' : 'Rol: Participante'),
             ],
           ),
         ],
@@ -331,7 +329,18 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
     int minLines = 3,
     int maxLines = 8,
   }) {
-    return _Card(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E2030), Color(0xFF191B24)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _borderColor),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -339,11 +348,11 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
             title,
             style: const TextStyle(
               color: Colors.white,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w900,
               fontSize: 15,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           TextField(
             controller: controller,
             minLines: minLines,
@@ -351,20 +360,13 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               filled: true,
-              fillColor: const Color(0xFF1E2030),
-              hintText: 'Sin contenido',
+              fillColor: const Color(0xFF0F111A),
+              hintText: 'Sin contenido generado...',
               hintStyle: const TextStyle(color: _textGrey),
+              contentPadding: const EdgeInsets.all(14),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: _borderColor),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: _borderColor),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: _pink),
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
               ),
             ),
           ),
@@ -433,33 +435,6 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
                 child: CircularProgressIndicator(color: _pink),
               ),
             )
-          : errorMessage != null && sessionData == null
-          ? _Card(
-              child: Column(
-                children: [
-                  Text(
-                    errorMessage!,
-                    style: const TextStyle(
-                      color: _pink,
-                      fontWeight: FontWeight.w700,
-                      height: 1.45,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _loadSession,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _pink,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Reintentar'),
-                    ),
-                  ),
-                ],
-              ),
-            )
           : SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -479,13 +454,6 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
                   ),
                   const SizedBox(height: 14),
                   _buildEditor(
-                    title: 'Transcripción',
-                    controller: _transcriptController,
-                    minLines: 8,
-                    maxLines: 14,
-                  ),
-                  const SizedBox(height: 14),
-                  _buildEditor(
                     title: 'Requerimientos funcionales',
                     controller: _functionalController,
                     minLines: 4,
@@ -499,13 +467,29 @@ class _TeamMeetingAiResultScreenState extends State<TeamMeetingAiResultScreen> {
                     maxLines: 8,
                   ),
                   const SizedBox(height: 14),
-                  _buildEditor(
-                    title: 'Tareas detectadas',
-                    controller: _tasksController,
-                    minLines: 4,
-                    maxLines: 8,
-                  ),
-                  const SizedBox(height: 14),
+                  if (_projectId != null)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          context.push('/team-meeting-history/${_projectId!}');
+                        },
+                        icon: const Icon(Icons.history_rounded),
+                        label: const Text(
+                          'Ver historial de llamadas',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF232736),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_projectId != null) const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(

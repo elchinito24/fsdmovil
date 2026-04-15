@@ -130,14 +130,31 @@ class ApiService {
     }
   }
 
-  static Future<void> updateProjectSrs(
+  static Future<Map<String, dynamic>> updateProjectSrs(
     int projectId,
     Map<String, dynamic> data,
   ) async {
     try {
-      await _dio.put('/projects/$projectId/srs/', data: data);
+      final payload = <String, dynamic>{
+        'srs_data': Map<String, dynamic>.from(
+          (data['srs_data'] as Map?) ?? <String, dynamic>{},
+        ),
+      };
+
+      final response = await _dio.put(
+        '/projects/$projectId/srs/',
+        data: payload,
+      );
+      return Map<String, dynamic>.from(response.data);
     } on DioException catch (e) {
-      throw Exception('Error al guardar SRS: ${e.response?.data ?? e.message}');
+      final raw = e.response?.data;
+      if (raw is Map<String, dynamic>) {
+        if (raw['detail'] != null) {
+          throw Exception(raw['detail'].toString());
+        }
+        throw Exception(raw.toString());
+      }
+      throw Exception('Error al guardar SRS: ${raw ?? e.message}');
     } catch (e) {
       throw Exception('Error al guardar SRS: $e');
     }
@@ -1532,6 +1549,23 @@ class ApiService {
       );
     } catch (e) {
       throw Exception('Error al cargar historial: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getTeamMeetingProjectHistory(
+    int projectId,
+  ) async {
+    try {
+      final response = await _dio.get(
+        '/team-meetings/project/$projectId/history/',
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al obtener historial de llamadas: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al obtener historial de llamadas: $e');
     }
   }
 }

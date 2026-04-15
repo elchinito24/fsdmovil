@@ -56,14 +56,16 @@ class _EditorScreenState extends State<EditorScreen> {
 
   SrsRealtimeService? _realtimeService;
   Timer? _debounceTimer;
-  Timer? _focusHeartbeat; // re-anuncia el campo activo cada 3s para nuevos usuarios
+  Timer?
+  _focusHeartbeat; // re-anuncia el campo activo cada 3s para nuevos usuarios
 
   // ── Save ──────────────────────────────────────────────────────────────────
   String _saveStatus = 'idle';
   bool _downloading = false;
   bool _saveValidationEnabled = true;
-  String? _focusedPath;  // campo actualmente enfocado (para enviar blur manual)
-  String? _focusedLabel; // label del campo enfocado (para re-anunciar al hacer join)
+  String? _focusedPath; // campo actualmente enfocado (para enviar blur manual)
+  String?
+  _focusedLabel; // label del campo enfocado (para re-anunciar al hacer join)
 
   // ── Presence ──────────────────────────────────────────────────────────────
   final Map<int, PresenceUser> _connectedUsers = {};
@@ -152,39 +154,43 @@ class _EditorScreenState extends State<EditorScreen> {
       final results = await Future.wait([
         ApiService.getProjectSrs(widget.projectId),
         ApiService.getProject(widget.projectId),
-        ApiService.getDefaultTemplate(),
       ]);
 
       final srsResponse = results[0] as Map<String, dynamic>;
       final projectData = results[1] as Map<String, dynamic>;
-      final template = results[2];
 
-      final formConfig =
-          Map<String, dynamic>.from(template?['form_config'] ?? {});
-      final formSections =
-          List<dynamic>.from(formConfig['sections'] ?? []);
-      final defaultData = Map<String, dynamic>.from(
-        template?['default_data'] ?? _fallbackDefaultData(),
+      final template = Map<String, dynamic>.from(
+        projectData['template'] as Map? ?? {},
       );
 
-      final rawSrsData =
-          Map<String, dynamic>.from(srsResponse['srs_data'] ?? {});
+      final formConfig = Map<String, dynamic>.from(
+        template['form_config'] ?? {},
+      );
+      final formSections = List<dynamic>.from(formConfig['sections'] ?? []);
+      final defaultData = Map<String, dynamic>.from(
+        template['default_data'] ?? _fallbackDefaultData(),
+      );
+
+      final rawSrsData = Map<String, dynamic>.from(
+        srsResponse['srs_data'] ?? {},
+      );
       final docData = _mergeDefaults(rawSrsData, defaultData);
 
-      // Pre-fill metadata from project creation data if SRS fields are blank
-      final metaMap =
-          Map<String, dynamic>.from(docData['metadata'] as Map? ?? {});
+      final metaMap = Map<String, dynamic>.from(
+        docData['metadata'] as Map? ?? {},
+      );
       if ((metaMap['projectName'] as String? ?? '').trim().isEmpty) {
         final name = (projectData['name'] ?? '').toString().trim();
         if (name.isNotEmpty) metaMap['projectName'] = name;
       }
       if ((metaMap['projectCode'] as String? ?? '').trim().isEmpty) {
-        final code = (projectData['code'] ??
-                projectData['projectCode'] ??
-                projectData['project_code'] ??
-                '')
-            .toString()
-            .trim();
+        final code =
+            (projectData['code'] ??
+                    projectData['projectCode'] ??
+                    projectData['project_code'] ??
+                    '')
+                .toString()
+                .trim();
         if (code.isNotEmpty) metaMap['projectCode'] = code;
       }
       if ((metaMap['description'] as String? ?? '').trim().isEmpty) {
@@ -193,68 +199,66 @@ class _EditorScreenState extends State<EditorScreen> {
       }
       docData['metadata'] = metaMap;
 
-      final rawCode = (projectData['code'] ??
-              projectData['projectCode'] ??
-              projectData['project_code'] ??
-              srsResponse['code'] ??
-              srsResponse['projectCode'] ??
-              srsResponse['project_code'])
-          ?.toString()
-          .trim();
+      final rawCode =
+          (projectData['code'] ??
+                  projectData['projectCode'] ??
+                  projectData['project_code'] ??
+                  srsResponse['code'] ??
+                  srsResponse['projectCode'] ??
+                  srsResponse['project_code'])
+              ?.toString()
+              .trim();
 
       _initControllersForSections(docData, formSections);
 
-      // Fallback: directly update any controller still empty whose path
-      // maps to project name / code / description.
-      final _pName = (projectData['name'] ?? '').toString().trim();
-      final _pCode = (projectData['code'] ??
-              projectData['projectCode'] ??
-              projectData['project_code'] ??
-              '')
-          .toString()
-          .trim();
-      final _pDesc = (projectData['description'] ?? '').toString().trim();
+      final pName = (projectData['name'] ?? '').toString().trim();
+      final pCode =
+          (projectData['code'] ??
+                  projectData['projectCode'] ??
+                  projectData['project_code'] ??
+                  '')
+              .toString()
+              .trim();
+      final pDesc = (projectData['description'] ?? '').toString().trim();
+
       for (final entry in _ctrl.entries) {
         if (entry.value.text.trim().isNotEmpty) continue;
         final p = entry.key;
-        if ((p.endsWith('.projectName') || p == 'projectName' ||
+        if ((p.endsWith('.projectName') ||
+                p == 'projectName' ||
                 p == 'metadata.projectName') &&
-            _pName.isNotEmpty) {
-          entry.value.text = _pName;
-          _setPath(docData, p, _pName);
-        } else if ((p.endsWith('.projectCode') || p == 'projectCode' ||
+            pName.isNotEmpty) {
+          entry.value.text = pName;
+          _setPath(docData, p, pName);
+        } else if ((p.endsWith('.projectCode') ||
+                p == 'projectCode' ||
                 p == 'metadata.projectCode') &&
-            _pCode.isNotEmpty) {
-          entry.value.text = _pCode;
-          _setPath(docData, p, _pCode);
+            pCode.isNotEmpty) {
+          entry.value.text = pCode;
+          _setPath(docData, p, pCode);
         } else if (p.toLowerCase().contains('description') &&
-            _pDesc.isNotEmpty) {
-          entry.value.text = _pDesc;
-          _setPath(docData, p, _pDesc);
+            pDesc.isNotEmpty) {
+          entry.value.text = pDesc;
+          _setPath(docData, p, pDesc);
         }
       }
 
-      // Determine if the current user is the owner of the project.
       final ownerField = projectData['owner'];
-      final ownerEmail = (ownerField is Map
-              ? ownerField['email']
-              : ownerField)
-          ?.toString()
-          .trim()
-          .toLowerCase() ??
+      final ownerEmail =
+          (ownerField is Map ? ownerField['email'] : ownerField)
+              ?.toString()
+              .trim()
+              .toLowerCase() ??
           '';
-      final currentEmail =
-          (AuthService.userEmail ?? '').trim().toLowerCase();
-      final isOwner =
-          ownerEmail.isNotEmpty && ownerEmail == currentEmail;
+      final currentEmail = (AuthService.userEmail ?? '').trim().toLowerCase();
+      final isOwner = ownerEmail.isNotEmpty && ownerEmail == currentEmail;
 
-      final rawStatus =
-          (projectData['status'] ?? 'draft').toString().trim();
+      final rawStatus = (projectData['status'] ?? 'draft').toString().trim();
 
-      final isNewSrs = rawSrsData.isEmpty ||
+      final isNewSrs =
+          rawSrsData.isEmpty ||
           (_getPath(
-                    Map<String, dynamic>.from(
-                        srsResponse['srs_data'] ?? {}),
+                    Map<String, dynamic>.from(srsResponse['srs_data'] ?? {}),
                     'metadata.projectName',
                   )?.toString() ??
                   '')
@@ -269,22 +273,36 @@ class _EditorScreenState extends State<EditorScreen> {
             : '_usuarios';
         fullResponse = srsResponse;
         serverUpdatedAt = srsResponse['updated_at']?.toString();
-        _projectCode =
-            (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
+        _projectCode = (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
         _isOwner = isOwner;
         _previousStatus = rawStatus == 'review' ? 'in_progress' : rawStatus;
         loading = false;
         errorMessage = null;
       });
 
-      // If this is a new project, persist the pre-filled metadata silently
       if (isNewSrs) {
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
           try {
-            await ApiService.updateProjectSrs(widget.projectId, {
+            final saved = await ApiService.updateProjectSrs(widget.projectId, {
               'srs_data': _docData,
-              'projectCode': _projectCode,
+            });
+
+            if (!mounted) return;
+
+            final savedSrs = Map<String, dynamic>.from(
+              saved['srs_data'] ?? _docData,
+            );
+
+            _applyingRemote = true;
+            _applyDocData(savedSrs);
+            _applyingRemote = false;
+
+            setState(() {
+              fullResponse = {...?fullResponse, ...saved};
+              serverUpdatedAt =
+                  saved['updated_at']?.toString() ?? serverUpdatedAt;
+              _lastRealtimeMessage = 'Documento inicial guardado';
             });
           } catch (_) {}
         });
@@ -300,45 +318,42 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Map<String, dynamic> _fallbackDefaultData() => {
-        'metadata': {
-          'projectName': '',
-          'projectCode': '',
-          'version': '1.0',
-          'owner': '',
-          'organization': '',
-          'createdAt': '',
-          'status': 'draft',
-        },
-        'teamMembers': [],
-        'revisionHistory': [],
-        'approvalHistory': [],
-        'introduction': {
-          'purpose': '',
-          'scope': '',
-          'definitions': [],
-          'references': [],
-          'overview': '',
-        },
-        'overallDescription': {
-          'productPerspective': '',
-          'productFunctions': '',
-          'userClasses': [],
-          'operatingEnvironment': '',
-          'constraints': '',
-          'assumptions': '',
-        },
-        'requirements': {
-          'functional': [],
-          'nonFunctional': [],
-        },
-        'externalInterfaces': {
-          'user': '',
-          'hardware': '',
-          'software': '',
-          'communications': '',
-        },
-        'appendices': [],
-      };
+    'metadata': {
+      'projectName': '',
+      'projectCode': '',
+      'version': '1.0',
+      'owner': '',
+      'organization': '',
+      'createdAt': '',
+      'status': 'draft',
+    },
+    'teamMembers': [],
+    'revisionHistory': [],
+    'approvalHistory': [],
+    'introduction': {
+      'purpose': '',
+      'scope': '',
+      'definitions': [],
+      'references': [],
+      'overview': '',
+    },
+    'overallDescription': {
+      'productPerspective': '',
+      'productFunctions': '',
+      'userClasses': [],
+      'operatingEnvironment': '',
+      'constraints': '',
+      'assumptions': '',
+    },
+    'requirements': {'functional': [], 'nonFunctional': []},
+    'externalInterfaces': {
+      'user': '',
+      'hardware': '',
+      'software': '',
+      'communications': '',
+    },
+    'appendices': [],
+  };
 
   void _initControllersForSections(
     Map<String, dynamic> docData,
@@ -407,8 +422,7 @@ class _EditorScreenState extends State<EditorScreen> {
           serverUpdatedAt = payload.updatedAt;
           _connectedUsers
             ..clear()
-            ..addEntries(
-                payload.connectedUsers.map((u) => MapEntry(u.id, u)));
+            ..addEntries(payload.connectedUsers.map((u) => MapEntry(u.id, u)));
           _lastRealtimeMessage =
               'Sesión colaborativa iniciada con ${payload.connectedUsers.length} usuario(s)';
         });
@@ -509,17 +523,20 @@ class _EditorScreenState extends State<EditorScreen> {
   // ── Save ──────────────────────────────────────────────────────────────────
 
   Future<void> saveChanges() async {
-    // Deselecciona el input y notifica al server que dejamos de editar
     if (_focusedPath != null) {
       _focusHeartbeat?.cancel();
       _realtimeService?.sendFieldBlur(path: _focusedPath!);
       _focusedPath = null;
       _focusedLabel = null;
     }
+
     FocusScope.of(context).unfocus();
+
     if (_saveValidationEnabled) {
-      final projectName =
-          (_getPath(_docData, 'metadata.projectName') ?? '').toString().trim();
+      final projectName = (_getPath(_docData, 'metadata.projectName') ?? '')
+          .toString()
+          .trim();
+
       if (projectName.isEmpty) {
         if (!mounted) return;
         setState(() => _saveStatus = 'error');
@@ -536,75 +553,71 @@ class _EditorScreenState extends State<EditorScreen> {
       }
     }
 
-    if (_projectCode == null || _projectCode!.trim().isEmpty) {
-      try {
-        final projectData = await ApiService.getProject(widget.projectId);
-        if (!mounted) return;
-        final rawCode = (projectData['code'] ??
-                projectData['projectCode'] ??
-                projectData['project_code'] ??
-                fullResponse?['code'] ??
-                fullResponse?['projectCode'] ??
-                fullResponse?['project_code'])
-            ?.toString()
-            .trim();
-        _projectCode =
-            (rawCode != null && rawCode.isNotEmpty) ? rawCode : null;
-      } catch (_) {}
-    }
-
-    if (_projectCode == null || _projectCode!.trim().isEmpty) {
-      if (!mounted) return;
-      setState(() => _saveStatus = 'error');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No se pudo obtener el código del proyecto. Intente recargar.',
-          ),
-          backgroundColor: _pink,
-        ),
-      );
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) setState(() => _saveStatus = 'idle');
-      });
-      return;
-    }
-
     setState(() {
       saving = true;
       _saveStatus = 'saving';
     });
 
     try {
-      await ApiService.updateProjectSrs(widget.projectId, {
+      final response = await ApiService.updateProjectSrs(widget.projectId, {
         'srs_data': _docData,
-        'projectCode': _projectCode,
       });
+
       if (!mounted) return;
+
+      final savedSrs = Map<String, dynamic>.from(
+        response['srs_data'] ?? _docData,
+      );
+
+      _applyingRemote = true;
+      _applyDocData(savedSrs);
+      _applyingRemote = false;
+
       setState(() {
+        fullResponse = {...?fullResponse, ...response};
+        serverUpdatedAt = response['updated_at']?.toString() ?? serverUpdatedAt;
         _saveStatus = 'saved';
         _lastRealtimeMessage = 'Cambios guardados manualmente';
+        _conflictMessage = null;
+        _syncing = false;
       });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cambios guardados correctamente'),
+          backgroundColor: Color(0xFF1BC47D),
+        ),
+      );
+
       Future.delayed(const Duration(milliseconds: 2500), () {
         if (mounted) setState(() => _saveStatus = 'idle');
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _saveStatus = 'error');
+
+      setState(() {
+        _saveStatus = 'error';
+        _syncing = false;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error al guardar: $e'),
+          content: Text(
+            'Error al guardar: ${e.toString().replaceFirst('Exception: ', '')}',
+          ),
           backgroundColor: _pink,
         ),
       );
+
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) setState(() => _saveStatus = 'idle');
       });
     } finally {
-      if (mounted) setState(() => saving = false);
+      if (mounted) {
+        setState(() => saving = false);
+      }
     }
   }
-
   // ── Send for review (non-owners) ──────────────────────────────────────────
 
   Future<void> sendForReview() async {
@@ -615,12 +628,10 @@ class _EditorScreenState extends State<EditorScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: _cardBg,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         title: const Text(
           'Enviar a revisión',
-          style:
-              TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
         content: const Text(
           'Tus cambios se guardarán como una versión nueva y el dueño del proyecto podrá aceptarlos o rechazarlos. ¿Continuar?',
@@ -629,8 +640,7 @@ class _EditorScreenState extends State<EditorScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child:
-                const Text('Cancelar', style: TextStyle(color: _textGrey)),
+            child: const Text('Cancelar', style: TextStyle(color: _textGrey)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -661,12 +671,12 @@ class _EditorScreenState extends State<EditorScreen> {
       // 2. Write the new SRS data live.
       await ApiService.updateProjectSrs(widget.projectId, {
         'srs_data': _docData,
-        'projectCode': _projectCode,
       });
 
       // 3. Mark the project as "in review".
-      await ApiService.partialUpdateProject(
-          widget.projectId, {'status': 'review'});
+      await ApiService.partialUpdateProject(widget.projectId, {
+        'status': 'review',
+      });
 
       if (!mounted) return;
       setState(() {
@@ -686,10 +696,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (!mounted) return;
       setState(() => _saveStatus = 'error');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al enviar: $e'),
-          backgroundColor: _pink,
-        ),
+        SnackBar(content: Text('Error al enviar: $e'), backgroundColor: _pink),
       );
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) setState(() => _saveStatus = 'idle');
@@ -744,26 +751,31 @@ class _EditorScreenState extends State<EditorScreen> {
     } else if (_saveStatus == 'error') {
       color = _pink;
       label = 'Error';
-      iconWidget =
-          const Icon(Icons.error_outline_rounded, size: 16, color: _pink);
+      iconWidget = const Icon(
+        Icons.error_outline_rounded,
+        size: 16,
+        color: _pink,
+      );
     } else if (_isOwner) {
       color = Colors.white;
       label = 'Guardar';
-      iconWidget =
-          const Icon(Icons.save_outlined, size: 16, color: Colors.white);
+      iconWidget = const Icon(
+        Icons.save_outlined,
+        size: 16,
+        color: Colors.white,
+      );
     } else {
       color = _pink;
       label = 'Enviar revisión';
-      iconWidget =
-          const Icon(Icons.send_rounded, size: 16, color: _pink);
+      iconWidget = const Icon(Icons.send_rounded, size: 16, color: _pink);
     }
 
     return TextButton.icon(
       onPressed: saving
           ? null
           : _isOwner
-              ? saveChanges
-              : sendForReview,
+          ? saveChanges
+          : sendForReview,
       icon: iconWidget,
       label: Text(
         label,
@@ -796,8 +808,10 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
             title: const Text(
               'Conflicto detectado',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             content: Text(
               updatedBy == null || updatedBy.isEmpty
@@ -842,25 +856,24 @@ class _EditorScreenState extends State<EditorScreen> {
   // ── Decorations ───────────────────────────────────────────────────────────
 
   InputDecoration _dec(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: _textGrey),
-        filled: true,
-        fillColor: _fieldBg,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: _borderColor),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: _borderColor),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: _pink, width: 1.5),
-        ),
-      );
+    hintText: hint,
+    hintStyle: const TextStyle(color: _textGrey),
+    filled: true,
+    fillColor: _fieldBg,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: _borderColor),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: _borderColor),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: _pink, width: 1.5),
+    ),
+  );
 
   // ── Dynamic field renderer ────────────────────────────────────────────────
 
@@ -883,10 +896,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
     if (type == 'select') {
       final options = List<Map<String, dynamic>>.from(
-          fieldConfig['options'] as List? ?? []);
+        fieldConfig['options'] as List? ?? [],
+      );
       final currentValue = _getPath(_docData, path)?.toString();
-      final validValue =
-          options.any((o) => o['value'] == currentValue) ? currentValue : null;
+      final validValue = options.any((o) => o['value'] == currentValue)
+          ? currentValue
+          : null;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -898,8 +913,7 @@ class _EditorScreenState extends State<EditorScreen> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: _borderColor),
             ),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: validValue,
@@ -910,13 +924,14 @@ class _EditorScreenState extends State<EditorScreen> {
                   hint.isEmpty ? 'Seleccionar...' : hint,
                   style: const TextStyle(color: _textGrey),
                 ),
-                style:
-                    const TextStyle(color: Colors.white, fontSize: 14),
+                style: const TextStyle(color: Colors.white, fontSize: 14),
                 items: options
-                    .map((opt) => DropdownMenuItem<String>(
-                          value: opt['value'] as String,
-                          child: Text(opt['label'] as String),
-                        ))
+                    .map(
+                      (opt) => DropdownMenuItem<String>(
+                        value: opt['value'] as String,
+                        child: Text(opt['label'] as String),
+                      ),
+                    )
                     .toList(),
                 onChanged: (val) {
                   if (val != null) {
@@ -933,7 +948,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
     final controller = _ctrl.putIfAbsent(path, () {
       final c = TextEditingController(
-          text: _getPath(_docData, path)?.toString() ?? '');
+        text: _getPath(_docData, path)?.toString() ?? '',
+      );
       final capturedPath = path;
       c.addListener(() {
         if (_applyingRemote) return;
@@ -970,11 +986,13 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     final maxLines = (type == 'textarea') ? (rows > 1 ? rows : 4) : 1;
-    final keyboardType =
-        (type == 'email') ? TextInputType.emailAddress : TextInputType.text;
+    final keyboardType = (type == 'email')
+        ? TextInputType.emailAddress
+        : TextInputType.text;
 
-    final activePresence =
-        _fieldPresenceByUser.values.where((p) => p.path == path).toList();
+    final activePresence = _fieldPresenceByUser.values
+        .where((p) => p.path == path)
+        .toList();
     final isTakenByOther = activePresence.isNotEmpty;
 
     return Column(
@@ -1002,22 +1020,27 @@ class _EditorScreenState extends State<EditorScreen> {
             spacing: 8,
             runSpacing: 6,
             children: activePresence
-                .map((p) => Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.edit_rounded,
-                            size: 11, color: _textGrey),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${p.user.name} está modificando este campo',
-                          style: const TextStyle(
-                            color: _textGrey,
-                            fontSize: 11.5,
-                            fontStyle: FontStyle.italic,
-                          ),
+                .map(
+                  (p) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.edit_rounded,
+                        size: 11,
+                        color: _textGrey,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${p.user.name} está modificando este campo',
+                        style: const TextStyle(
+                          color: _textGrey,
+                          fontSize: 11.5,
+                          fontStyle: FontStyle.italic,
                         ),
-                      ],
-                    ))
+                      ),
+                    ],
+                  ),
+                )
                 .toList(),
           ),
         ],
@@ -1038,7 +1061,9 @@ class _EditorScreenState extends State<EditorScreen> {
             title: const Text(
               'Confirmar eliminación',
               style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800),
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             content: Text(
               '¿Seguro que deseas eliminar "$itemName"? Esta acción no se puede deshacer.',
@@ -1047,8 +1072,10 @@ class _EditorScreenState extends State<EditorScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dCtx, false),
-                child: const Text('Cancelar',
-                    style: TextStyle(color: _textGrey)),
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(color: _textGrey),
+                ),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(dCtx, true),
@@ -1070,11 +1097,11 @@ class _EditorScreenState extends State<EditorScreen> {
     final title = sub['title'] as String? ?? '';
     final path = sub['path'] as String;
     final itemFields = List<Map<String, dynamic>>.from(
-        sub['itemFields'] as List? ?? []);
+      sub['itemFields'] as List? ?? [],
+    );
     final titleClean = title.replaceAll(RegExp(r'^[\d\.]+ ?'), '');
     final addLabel = 'Agregar ${titleClean.toLowerCase()}';
-    final items =
-        List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
+    final items = List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
     final hasDraft = _draftObjectPaths.contains(path);
 
     Map<String, dynamic> emptyItem() {
@@ -1097,10 +1124,10 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
         const SizedBox(height: 12),
         ...List.generate(items.length, (i) {
-          final item =
-              Map<String, dynamic>.from(items[i] as Map? ?? {});
-          final isBusy = _fieldPresenceByUser.values
-              .any((p) => p.path.startsWith('$path.$i.'));
+          final item = Map<String, dynamic>.from(items[i] as Map? ?? {});
+          final isBusy = _fieldPresenceByUser.values.any(
+            (p) => p.path.startsWith('$path.$i.'),
+          );
           return _ObjectArrayItemCard(
             key: ValueKey('$path.$i.${items.length}'),
             item: item,
@@ -1114,12 +1141,16 @@ class _EditorScreenState extends State<EditorScreen> {
               _focusedPath = presencePath;
               _focusedLabel = label;
               _realtimeService?.sendFieldFocus(
-                  path: presencePath, label: label);
+                path: presencePath,
+                label: label,
+              );
               _focusHeartbeat?.cancel();
               _focusHeartbeat = Timer.periodic(
                 const Duration(seconds: 3),
                 (_) => _realtimeService?.sendFieldFocus(
-                    path: presencePath, label: label),
+                  path: presencePath,
+                  label: label,
+                ),
               );
             },
             onBlur: (presencePath) {
@@ -1133,23 +1164,25 @@ class _EditorScreenState extends State<EditorScreen> {
             onChanged: (updated) {
               setState(() {
                 final list = List<dynamic>.from(
-                    _getPath(_docData, path) as List? ?? []);
+                  _getPath(_docData, path) as List? ?? [],
+                );
                 list[i] = updated;
                 _setPath(_docData, path, list);
               });
               _scheduleRealtimeSync();
             },
             onRemove: () async {
-              final itemTitle = item['titulo']?.toString() ??
+              final itemTitle =
+                  item['titulo']?.toString() ??
                   item['nombre']?.toString() ??
                   item['name']?.toString() ??
                   'elemento ${i + 1}';
-              final confirm =
-                  await _confirmDelete(context, itemTitle);
+              final confirm = await _confirmDelete(context, itemTitle);
               if (!confirm || !mounted) return;
               setState(() {
                 final list = List<dynamic>.from(
-                    _getPath(_docData, path) as List? ?? []);
+                  _getPath(_docData, path) as List? ?? [],
+                );
                 list.removeAt(i);
                 _setPath(_docData, path, list);
               });
@@ -1174,7 +1207,8 @@ class _EditorScreenState extends State<EditorScreen> {
             onConfirm: (data) {
               setState(() {
                 final list = List<dynamic>.from(
-                    _getPath(_docData, path) as List? ?? []);
+                  _getPath(_docData, path) as List? ?? [],
+                );
                 list.add(data);
                 _setPath(_docData, path, list);
                 _draftObjectPaths.remove(path);
@@ -1200,8 +1234,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final path = sub['path'] as String;
     final itemLabel = sub['itemLabel'] as String? ?? 'Elemento';
     final titleClean = title.replaceAll(RegExp(r'^[\d\.]+ ?'), '');
-    final items =
-        List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
+    final items = List<dynamic>.from(_getPath(_docData, path) as List? ?? []);
     final hasDraft = _draftStringPaths.contains(path);
 
     return Column(
@@ -1223,12 +1256,12 @@ class _EditorScreenState extends State<EditorScreen> {
           final fieldLabel = '$itemLabel ${i + 1}';
 
           final c = _ctrl.putIfAbsent(ctrlKey, () {
-            final ctrl =
-                TextEditingController(text: items[i].toString());
+            final ctrl = TextEditingController(text: items[i].toString());
             ctrl.addListener(() {
               if (_applyingRemote) return;
               final list = List<dynamic>.from(
-                  _getPath(_docData, path) as List? ?? []);
+                _getPath(_docData, path) as List? ?? [],
+              );
               if (i < list.length) list[i] = ctrl.text;
               _setPath(_docData, path, list);
               _scheduleRealtimeSync();
@@ -1244,12 +1277,16 @@ class _EditorScreenState extends State<EditorScreen> {
                 _focusedPath = presencePath;
                 _focusedLabel = fieldLabel;
                 _realtimeService?.sendFieldFocus(
-                    path: presencePath, label: fieldLabel);
+                  path: presencePath,
+                  label: fieldLabel,
+                );
                 _focusHeartbeat?.cancel();
                 _focusHeartbeat = Timer.periodic(
                   const Duration(seconds: 3),
                   (_) => _realtimeService?.sendFieldFocus(
-                      path: presencePath, label: fieldLabel),
+                    path: presencePath,
+                    label: fieldLabel,
+                  ),
                 );
               } else {
                 _focusHeartbeat?.cancel();
@@ -1312,7 +1349,9 @@ class _EditorScreenState extends State<EditorScreen> {
                       GestureDetector(
                         onTap: () async {
                           final confirm = await _confirmDelete(
-                              context, fieldLabel);
+                            context,
+                            fieldLabel,
+                          );
                           if (!confirm || !mounted) return;
                           _focusNodes['$path.__str__$i']?.dispose();
                           _focusNodes.remove('$path.__str__$i');
@@ -1329,7 +1368,8 @@ class _EditorScreenState extends State<EditorScreen> {
                           }
                           setState(() {
                             final list = List<dynamic>.from(
-                                _getPath(_docData, path) as List? ?? []);
+                              _getPath(_docData, path) as List? ?? [],
+                            );
                             list.removeAt(i);
                             _setPath(_docData, path, list);
                           });
@@ -1343,8 +1383,11 @@ class _EditorScreenState extends State<EditorScreen> {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: _borderColor),
                           ),
-                          child: const Icon(Icons.close_rounded,
-                              size: 16, color: _textGrey),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 16,
+                            color: _textGrey,
+                          ),
                         ),
                       ),
                   ],
@@ -1355,22 +1398,27 @@ class _EditorScreenState extends State<EditorScreen> {
                     spacing: 8,
                     runSpacing: 6,
                     children: activePresence
-                        .map((p) => Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.edit_rounded,
-                                    size: 11, color: _textGrey),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${p.user.name} está modificando este campo',
-                                  style: const TextStyle(
-                                    color: _textGrey,
-                                    fontSize: 11.5,
-                                    fontStyle: FontStyle.italic,
-                                  ),
+                        .map(
+                          (p) => Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.edit_rounded,
+                                size: 11,
+                                color: _textGrey,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${p.user.name} está modificando este campo',
+                                style: const TextStyle(
+                                  color: _textGrey,
+                                  fontSize: 11.5,
+                                  fontStyle: FontStyle.italic,
                                 ),
-                              ],
-                            ))
+                              ),
+                            ],
+                          ),
+                        )
                         .toList(),
                   ),
                 ],
@@ -1379,81 +1427,90 @@ class _EditorScreenState extends State<EditorScreen> {
           );
         }),
         if (hasDraft)
-          Builder(builder: (ctx) {
-            final draftKey = '$path.__draft__';
-            final draftCtrl = _ctrl.putIfAbsent(
-                draftKey, () => TextEditingController());
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: draftCtrl,
-                        autofocus: true,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: _dec('$itemLabel nuevo'),
+          Builder(
+            builder: (ctx) {
+              final draftKey = '$path.__draft__';
+              final draftCtrl = _ctrl.putIfAbsent(
+                draftKey,
+                () => TextEditingController(),
+              );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: draftCtrl,
+                          autofocus: true,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: _dec('$itemLabel nuevo'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () {
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () {
+                          _ctrl['$path.__draft__']?.dispose();
+                          _ctrl.remove('$path.__draft__');
+                          setState(() => _draftStringPaths.remove(path));
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _fieldBg,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _borderColor),
+                          ),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 16,
+                            color: _textGrey,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        final val = (_ctrl['$path.__draft__']?.text ?? '')
+                            .trim();
                         _ctrl['$path.__draft__']?.dispose();
                         _ctrl.remove('$path.__draft__');
-                        setState(() => _draftStringPaths.remove(path));
+                        setState(() {
+                          _draftStringPaths.remove(path);
+                          if (val.isNotEmpty) {
+                            final list = List<dynamic>.from(
+                              _getPath(_docData, path) as List? ?? [],
+                            );
+                            list.add(val);
+                            _setPath(_docData, path, list);
+                          }
+                        });
+                        if (val.isNotEmpty) _scheduleRealtimeSync();
                       },
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: _fieldBg,
+                      icon: const Icon(Icons.check_rounded, size: 16),
+                      label: const Text(
+                        'Guardar',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _pink,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _borderColor),
                         ),
-                        child: const Icon(Icons.close_rounded,
-                            size: 16, color: _textGrey),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      final val =
-                          (_ctrl['$path.__draft__']?.text ?? '').trim();
-                      _ctrl['$path.__draft__']?.dispose();
-                      _ctrl.remove('$path.__draft__');
-                      setState(() {
-                        _draftStringPaths.remove(path);
-                        if (val.isNotEmpty) {
-                          final list = List<dynamic>.from(
-                              _getPath(_docData, path) as List? ?? []);
-                          list.add(val);
-                          _setPath(_docData, path, list);
-                        }
-                      });
-                      if (val.isNotEmpty) _scheduleRealtimeSync();
-                    },
-                    icon: const Icon(Icons.check_rounded, size: 16),
-                    label: const Text(
-                      'Guardar',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _pink,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
                   ),
-                ),
-              ],
-            );
-          })
+                ],
+              );
+            },
+          )
         else
           _buildAddButton('Agregar ${itemLabel.toLowerCase()}', () {
             setState(() => _draftStringPaths.add(path));
@@ -1503,13 +1560,14 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     final sectionConfig = _formSections.cast<Map>().firstWhere(
-          (s) => s['id'] == _selectedSectionId,
-          orElse: () => <String, dynamic>{},
-        );
+      (s) => s['id'] == _selectedSectionId,
+      orElse: () => <String, dynamic>{},
+    );
     if (sectionConfig.isEmpty) return const SizedBox();
 
-    final subsections =
-        List<dynamic>.from(sectionConfig['subsections'] as List? ?? []);
+    final subsections = List<dynamic>.from(
+      sectionConfig['subsections'] as List? ?? [],
+    );
     final widgets = <Widget>[];
 
     for (var i = 0; i < subsections.length; i++) {
@@ -1524,22 +1582,27 @@ class _EditorScreenState extends State<EditorScreen> {
 
       if (type == 'array') {
         final itemType = sub['itemType'] as String?;
-        widgets.add(itemType == 'string'
-            ? _buildStringArraySubsection(sub)
-            : _buildObjectArraySubsection(sub));
+        widgets.add(
+          itemType == 'string'
+              ? _buildStringArraySubsection(sub)
+              : _buildObjectArraySubsection(sub),
+        );
       } else {
         final subTitle = sub['title'] as String? ?? '';
         final fields = List<Map<String, dynamic>>.from(
-            sub['fields'] as List? ?? []);
-        widgets.add(Text(
-          subTitle.toUpperCase(),
-          style: const TextStyle(
-            color: _textGrey,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
+          sub['fields'] as List? ?? [],
+        );
+        widgets.add(
+          Text(
+            subTitle.toUpperCase(),
+            style: const TextStyle(
+              color: _textGrey,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
           ),
-        ));
+        );
         widgets.add(const SizedBox(height: 12));
         for (var j = 0; j < fields.length; j++) {
           widgets.add(_buildField(fields[j]));
@@ -1592,8 +1655,10 @@ class _EditorScreenState extends State<EditorScreen> {
             (user) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: _fieldBg,
                   borderRadius: BorderRadius.circular(14),
@@ -1638,20 +1703,20 @@ class _EditorScreenState extends State<EditorScreen> {
                           const SizedBox(height: 2),
                           const Text(
                             'Activo en esta sesión',
-                            style:
-                                TextStyle(color: _textGrey, fontSize: 12),
+                            style: TextStyle(color: _textGrey, fontSize: 12),
                           ),
                         ],
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0x22E8365D),
                         borderRadius: BorderRadius.circular(999),
-                        border:
-                            Border.all(color: const Color(0x55E8365D)),
+                        border: Border.all(color: const Color(0x55E8365D)),
                       ),
                       child: const Text(
                         'EDITOR',
@@ -1756,259 +1821,250 @@ class _EditorScreenState extends State<EditorScreen> {
         child: loading
             ? const Center(child: CircularProgressIndicator(color: _pink))
             : errorMessage != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white),
-                      ),
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              )
+            : Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                    decoration: const BoxDecoration(
+                      border: Border(bottom: BorderSide(color: _borderColor)),
                     ),
-                  )
-                : Column(
-                    children: [
-                      Container(
-                        padding:
-                            const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                        decoration: const BoxDecoration(
-                          border: Border(
-                              bottom: BorderSide(color: _borderColor)),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => context.pop(),
+                          icon: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
                         ),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              onPressed: () => context.pop(),
-                              icon: const Icon(
-                                Icons.arrow_back_ios_new_rounded,
-                                color: Colors.white,
-                                size: 20,
+                        const Spacer(),
+                        PopupMenuButton<String>(
+                          color: _cardBg,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            side: const BorderSide(color: _borderColor),
+                          ),
+                          icon: const Icon(
+                            Icons.more_vert_rounded,
+                            color: Colors.white,
+                          ),
+                          onSelected: (value) {
+                            if (value == 'preview') {
+                              context.push('/preview/${widget.projectId}');
+                            } else if (value == 'download') {
+                              _downloadDocx();
+                            }
+                          },
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(
+                              value: 'preview',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.visibility_outlined,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Vista previa',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ],
                               ),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
                             ),
-                            const Spacer(),
-                            PopupMenuButton<String>(
-                              color: _cardBg,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(14),
-                                side: const BorderSide(
-                                    color: _borderColor),
-                              ),
-                              icon: const Icon(
-                                Icons.more_vert_rounded,
-                                color: Colors.white,
-                              ),
-                              onSelected: (value) {
-                                if (value == 'preview') {
-                                  context.push(
-                                      '/preview/${widget.projectId}');
-                                } else if (value == 'download') {
-                                  _downloadDocx();
-                                }
-                              },
-                              itemBuilder: (_) => [
-                                const PopupMenuItem(
-                                  value: 'preview',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.visibility_outlined,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                      SizedBox(width: 10),
-                                      Text(
-                                        'Vista previa',
-                                        style: TextStyle(
-                                            color: Colors.white),
-                                      ),
-                                    ],
+                            PopupMenuItem(
+                              value: 'download',
+                              enabled: !_downloading,
+                              child: Row(
+                                children: [
+                                  _downloading
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: _pink,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.download_outlined,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    _downloading
+                                        ? 'Generando...'
+                                        : 'Descargar DOCX',
+                                    style: const TextStyle(color: Colors.white),
                                   ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'download',
-                                  enabled: !_downloading,
-                                  child: Row(
-                                    children: [
-                                      _downloading
-                                          ? const SizedBox(
-                                              width: 18,
-                                              height: 18,
-                                              child:
-                                                  CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: _pink,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.download_outlined,
-                                              color: Colors.white,
-                                              size: 18,
-                                            ),
-                                      const SizedBox(width: 10),
-                                      Text(
-                                        _downloading
-                                            ? 'Generando...'
-                                            : 'Descargar DOCX',
-                                        style: const TextStyle(
-                                            color: Colors.white),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                      // ── Secondary controls bar ───────────────────────────
-                      Container(
-                        padding:
-                            const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                        decoration: const BoxDecoration(
-                          border: Border(
-                              bottom: BorderSide(color: _borderColor)),
-                        ),
-                        child: Row(
-                          children: [
-                            // Mode tabs
-                            _EditorModeTab(
-                              label: 'FORMULARIO',
-                              active: _editorMode == 'form',
-                              onTap: () => setState(() => _editorMode = 'form'),
-                            ),
-                            const SizedBox(width: 4),
-                            _EditorModeTab(
-                              label: 'JSON',
-                              active: _editorMode == 'json',
-                              onTap: () => setState(() => _editorMode = 'json'),
-                            ),
-                            const SizedBox(width: 4),
-                            _EditorModeTab(
-                              label: 'AI',
-                              icon: Icons.auto_awesome_rounded,
-                              active: _editorMode == 'ai',
-                              onTap: () => setState(() => _editorMode = 'ai'),
-                            ),
-                            const Spacer(),
-                            // Presence avatars
-                            ...connectedUsers.take(3).map((u) {
-                              final initials = u.name.isNotEmpty
-                                  ? u.name.trim()[0].toUpperCase()
-                                  : '?';
-                              return Padding(
-                                padding: const EdgeInsets.only(left: 4),
-                                child: Tooltip(
-                                  message: u.name,
-                                  child: CircleAvatar(
-                                    radius: 14,
-                                    backgroundColor: _pink,
-                                    child: Text(
-                                      initials,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                      ],
+                    ),
+                  ),
+                  // ── Secondary controls bar ───────────────────────────
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                    decoration: const BoxDecoration(
+                      border: Border(bottom: BorderSide(color: _borderColor)),
+                    ),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _EditorModeTab(
+                            label: 'FORMULARIO',
+                            active: _editorMode == 'form',
+                            onTap: () => setState(() => _editorMode = 'form'),
+                          ),
+                          const SizedBox(width: 4),
+                          _EditorModeTab(
+                            label: 'JSON',
+                            active: _editorMode == 'json',
+                            onTap: () => setState(() => _editorMode = 'json'),
+                          ),
+                          const SizedBox(width: 4),
+                          _EditorModeTab(
+                            label: 'AI',
+                            icon: Icons.auto_awesome_rounded,
+                            active: _editorMode == 'ai',
+                            onTap: () => setState(() => _editorMode = 'ai'),
+                          ),
+                          const SizedBox(width: 12),
+                          ...connectedUsers.take(3).map((u) {
+                            final initials = u.name.isNotEmpty
+                                ? u.name.trim()[0].toUpperCase()
+                                : '?';
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: Tooltip(
+                                message: u.name,
+                                child: CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: _pink,
+                                  child: Text(
+                                    initials,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
                                 ),
-                              );
-                            }),
-                            const SizedBox(width: 6),
-                            _buildSaveButton(),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            if (_focusedPath != null) {
-                              _focusHeartbeat?.cancel();
-                              _realtimeService?.sendFieldBlur(path: _focusedPath!);
-                              _focusedPath = null;
-                              _focusedLabel = null;
-                            }
-                            FocusScope.of(context).unfocus();
-                          },
-                          behavior: HitTestBehavior.translucent,
-                          child: _editorMode == 'json'
-                              ? _JsonView(data: _docData)
-                              : _editorMode == 'ai'
-                                  ? _AiView(
-                                      projectId: widget.projectId,
-                                      onApplied: () async {
-                                        setState(() => loading = true);
-                                        await loadSrs();
-                                      },
-                                    )
-                                  : ListView(
-                          padding: const EdgeInsets.fromLTRB(
-                              20, 18, 20, 28),
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                color: _cardBg,
-                                borderRadius:
-                                    BorderRadius.circular(14),
-                                border:
-                                    Border.all(color: _borderColor),
                               ),
-                              padding:
-                                  const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 4),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _selectedSectionId
-                                          .isNotEmpty
-                                      ? _selectedSectionId
-                                      : null,
-                                  isExpanded: true,
-                                  dropdownColor: _cardBg,
-                                  iconEnabledColor: _textGrey,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  items: sections
-                                      .map((s) =>
-                                          DropdownMenuItem<String>(
-                                            value: s['value'],
-                                            child:
-                                                Text(s['label']!),
-                                          ))
-                                      .toList(),
-                                  onChanged: (val) {
-                                    if (val != null) {
-                                      setState(() =>
-                                          _selectedSectionId =
-                                              val);
-                                    }
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            Container(
-                              padding: const EdgeInsets.all(18),
-                              decoration: BoxDecoration(
-                                color: _cardBg,
-                                borderRadius:
-                                    BorderRadius.circular(22),
-                                border:
-                                    Border.all(color: _borderColor),
-                              ),
-                              child: _buildSectionContent(),
-                            ),
-                          ],
-                        ),
+                            );
+                          }),
+                          const SizedBox(width: 8),
+                          _buildSaveButton(),
+                        ],
                       ),
                     ),
-                    ],
                   ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        if (_focusedPath != null) {
+                          _focusHeartbeat?.cancel();
+                          _realtimeService?.sendFieldBlur(path: _focusedPath!);
+                          _focusedPath = null;
+                          _focusedLabel = null;
+                        }
+                        FocusScope.of(context).unfocus();
+                      },
+                      behavior: HitTestBehavior.translucent,
+                      child: _editorMode == 'json'
+                          ? _JsonView(data: _docData)
+                          : _editorMode == 'ai'
+                          ? _AiView(
+                              projectId: widget.projectId,
+                              onApplied: () async {
+                                setState(() => loading = true);
+                                await loadSrs();
+                              },
+                            )
+                          : ListView(
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                18,
+                                20,
+                                28,
+                              ),
+                              children: [
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: _cardBg,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: _borderColor),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 4,
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _selectedSectionId.isNotEmpty
+                                          ? _selectedSectionId
+                                          : null,
+                                      isExpanded: true,
+                                      dropdownColor: _cardBg,
+                                      iconEnabledColor: _textGrey,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      items: sections
+                                          .map(
+                                            (s) => DropdownMenuItem<String>(
+                                              value: s['value'],
+                                              child: Text(s['label']!),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          setState(
+                                            () => _selectedSectionId = val,
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 18),
+                                Container(
+                                  padding: const EdgeInsets.all(18),
+                                  decoration: BoxDecoration(
+                                    color: _cardBg,
+                                    borderRadius: BorderRadius.circular(22),
+                                    border: Border.all(color: _borderColor),
+                                  ),
+                                  child: _buildSectionContent(),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -2068,8 +2124,7 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
       final presencePath = '${widget.pathPrefix}.$fid';
       final label = field['label'] as String? ?? fid;
 
-      final c = TextEditingController(
-          text: _localData[fid]?.toString() ?? '');
+      final c = TextEditingController(text: _localData[fid]?.toString() ?? '');
       c.addListener(() {
         _localData[fid] = c.text;
         widget.onChanged(Map<String, dynamic>.from(_localData));
@@ -2123,28 +2178,25 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
   }
 
   InputDecoration _dec(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle:
-            const TextStyle(color: _textGrey, fontSize: 13),
-        filled: true,
-        fillColor: _cardBg,
-        isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _borderColor),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _borderColor),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide:
-              const BorderSide(color: _pink, width: 1.5),
-        ),
-      );
+    hintText: hint,
+    hintStyle: const TextStyle(color: _textGrey, fontSize: 13),
+    filled: true,
+    fillColor: _cardBg,
+    isDense: true,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: const BorderSide(color: _borderColor),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: const BorderSide(color: _borderColor),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: const BorderSide(color: _pink, width: 1.5),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -2186,8 +2238,11 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
               if (widget.isDraft)
                 GestureDetector(
                   onTap: widget.onCancel,
-                  child: const Icon(Icons.close_rounded,
-                      size: 18, color: _textGrey),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: _textGrey,
+                  ),
                 )
               else if (widget.isBusy)
                 Tooltip(
@@ -2201,8 +2256,11 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
               else
                 GestureDetector(
                   onTap: () => widget.onRemove(),
-                  child: const Icon(Icons.close_rounded,
-                      size: 18, color: _textGrey),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: _textGrey,
+                  ),
                 ),
             ],
           ),
@@ -2223,10 +2281,10 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
             Widget fieldWidget;
             if (type == 'select') {
               final options = List<Map<String, dynamic>>.from(
-                  field['options'] as List? ?? []);
+                field['options'] as List? ?? [],
+              );
               final cur = _localData[fid]?.toString();
-              final valid =
-                  options.any((o) => o['value'] == cur) ? cur : null;
+              final valid = options.any((o) => o['value'] == cur) ? cur : null;
               fieldWidget = Opacity(
                 opacity: isTakenByOther ? 0.45 : 1.0,
                 child: IgnorePointer(
@@ -2238,28 +2296,37 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                       border: Border.all(color: _borderColor),
                     ),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: valid,
                         isExpanded: true,
                         dropdownColor: _cardBg,
                         iconEnabledColor: _textGrey,
-                        hint: const Text('Seleccionar...',
-                            style: TextStyle(color: _textGrey)),
+                        hint: const Text(
+                          'Seleccionar...',
+                          style: TextStyle(color: _textGrey),
+                        ),
                         style: const TextStyle(
-                            color: Colors.white, fontSize: 13),
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
                         items: options
-                            .map((opt) => DropdownMenuItem<String>(
-                                  value: opt['value'] as String,
-                                  child: Text(opt['label'] as String),
-                                ))
+                            .map(
+                              (opt) => DropdownMenuItem<String>(
+                                value: opt['value'] as String,
+                                child: Text(opt['label'] as String),
+                              ),
+                            )
                             .toList(),
                         onChanged: (val) {
                           if (val != null) {
                             setState(() => _localData[fid] = val);
                             widget.onChanged(
-                                Map<String, dynamic>.from(_localData));
+                              Map<String, dynamic>.from(_localData),
+                            );
                           }
                         },
                       ),
@@ -2268,8 +2335,7 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                 ),
               );
             } else {
-              final maxLines =
-                  (type == 'textarea') ? (rows > 1 ? rows : 3) : 1;
+              final maxLines = (type == 'textarea') ? (rows > 1 ? rows : 3) : 1;
               fieldWidget = Opacity(
                 opacity: isTakenByOther ? 0.45 : 1.0,
                 child: IgnorePointer(
@@ -2278,8 +2344,7 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                     controller: _ctrl[fid],
                     focusNode: _focusNodes[fid],
                     maxLines: maxLines,
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 13),
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
                     decoration: _dec(hint.isEmpty ? label : hint),
                   ),
                 ),
@@ -2307,22 +2372,27 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                       spacing: 8,
                       runSpacing: 4,
                       children: activePresence
-                          .map((p) => Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.edit_rounded,
-                                      size: 11, color: _textGrey),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${p.user.name} está modificando este campo',
-                                    style: const TextStyle(
-                                      color: _textGrey,
-                                      fontSize: 11.5,
-                                      fontStyle: FontStyle.italic,
-                                    ),
+                          .map(
+                            (p) => Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.edit_rounded,
+                                  size: 11,
+                                  color: _textGrey,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${p.user.name} está modificando este campo',
+                                  style: const TextStyle(
+                                    color: _textGrey,
+                                    fontSize: 11.5,
+                                    fontStyle: FontStyle.italic,
                                   ),
-                                ],
-                              ))
+                                ),
+                              ],
+                            ),
+                          )
                           .toList(),
                     ),
                   ],
@@ -2336,8 +2406,9 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => widget.onConfirm
-                    ?.call(Map<String, dynamic>.from(_localData)),
+                onPressed: () => widget.onConfirm?.call(
+                  Map<String, dynamic>.from(_localData),
+                ),
                 icon: const Icon(Icons.check_rounded, size: 16),
                 label: const Text(
                   'Guardar',
@@ -2348,7 +2419,8 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
             ),
@@ -2384,19 +2456,13 @@ class _EditorModeTab extends StatelessWidget {
         decoration: BoxDecoration(
           color: active ? _pink : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: active ? _pink : _borderColor,
-          ),
+          border: Border.all(color: active ? _pink : _borderColor),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(
-                icon,
-                size: 12,
-                color: active ? Colors.white : _textGrey,
-              ),
+              Icon(icon, size: 12, color: active ? Colors.white : _textGrey),
               const SizedBox(width: 4),
             ],
             Text(
@@ -2587,10 +2653,7 @@ class _AiViewState extends State<_AiView> {
                         SizedBox(height: 2),
                         Text(
                           'Genera el SRS completo automáticamente',
-                          style: TextStyle(
-                            color: _textGrey,
-                            fontSize: 12.5,
-                          ),
+                          style: TextStyle(color: _textGrey, fontSize: 12.5),
                         ),
                       ],
                     ),
@@ -2600,11 +2663,7 @@ class _AiViewState extends State<_AiView> {
               const SizedBox(height: 18),
               const Text(
                 'La IA analizará la información del proyecto y completará todas las secciones del SRS de forma automática.',
-                style: TextStyle(
-                  color: _textGrey,
-                  fontSize: 13.5,
-                  height: 1.5,
-                ),
+                style: TextStyle(color: _textGrey, fontSize: 13.5, height: 1.5),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 14),
@@ -2684,7 +2743,6 @@ class _AiViewState extends State<_AiView> {
     );
   }
 }
-
 
 class _RealtimeStatusCard extends StatelessWidget {
   final bool connected;
@@ -2830,7 +2888,9 @@ class _RealtimeStatusCard extends StatelessWidget {
                     context: context,
                     backgroundColor: _cardBg,
                     shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(22),
+                      ),
                     ),
                     builder: (_) => _CollaboratorsSheet(users: connectedUsers),
                   ),
@@ -2935,9 +2995,7 @@ class _CollaboratorsSheet extends StatelessWidget {
                     ),
                     child: Center(
                       child: Text(
-                        user.name.isNotEmpty
-                            ? user.name[0].toUpperCase()
-                            : '?',
+                        user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
                         style: const TextStyle(
                           color: _pink,
                           fontWeight: FontWeight.w800,

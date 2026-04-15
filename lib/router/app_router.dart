@@ -26,6 +26,7 @@ import 'package:fsdmovil/screens/team_meeting_lobby_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_room_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_ai_result_screen.dart';
 import 'package:fsdmovil/screens/version_history_screen.dart';
+import 'package:fsdmovil/screens/team_meeting_history_screen.dart';
 
 final routeObserver = RouteObserver<PageRoute<dynamic>>();
 
@@ -89,61 +90,71 @@ final appRouter = GoRouter(
       builder: (context, state, navigationShell) =>
           PersistentShell(navigationShell: navigationShell),
       branches: [
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/dashboard',
-            builder: (c, s) => const DashboardScreen(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/workspaces',
-            builder: (c, s) => const WorkspacesScreen(),
-          ),
-          GoRoute(
-            path: '/workspace/:id',
-            builder: (context, state) {
-              final id = int.parse(state.pathParameters['id']!);
-              return WorkspaceDetailScreen(workspaceId: id);
-            },
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/projects',
-            builder: (c, s) => const ProjectsScreen(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/documents',
-            builder: (c, s) => const DocumentsScreen(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/reviews',
-            builder: (c, s) => const ReviewsScreen(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/diagrams',
-            builder: (c, s) => const DiagramsScreen(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/history',
-            builder: (c, s) => const HistoryScreen(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/meeting-mode',
-            builder: (c, s) => const MeetingModeScreen(),
-          ),
-        ]),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/dashboard',
+              builder: (c, s) => const DashboardScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/workspaces',
+              builder: (c, s) => const WorkspacesScreen(),
+            ),
+            GoRoute(
+              path: '/workspace/:id',
+              builder: (context, state) {
+                final id = int.parse(state.pathParameters['id']!);
+                return WorkspaceDetailScreen(workspaceId: id);
+              },
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/projects',
+              builder: (c, s) => const ProjectsScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/documents',
+              builder: (c, s) => const DocumentsScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(path: '/reviews', builder: (c, s) => const ReviewsScreen()),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/diagrams',
+              builder: (c, s) => const DiagramsScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(path: '/history', builder: (c, s) => const HistoryScreen()),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/meeting-mode',
+              builder: (c, s) => const MeetingModeScreen(),
+            ),
+          ],
+        ),
       ],
     ),
 
@@ -246,6 +257,17 @@ final appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: '/team-meeting-history/:projectId',
+      pageBuilder: (context, state) {
+        final projectId = int.parse(state.pathParameters['projectId']!);
+        return _slideTransition(
+          context,
+          state,
+          TeamMeetingHistoryScreen(projectId: projectId),
+        );
+      },
+    ),
+    GoRoute(
       path: '/history/:id',
       builder: (context, state) {
         final projectId = int.parse(state.pathParameters['id']!);
@@ -287,7 +309,9 @@ class _SectionPlaceholderScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
         ),
         child: Column(
           children: [
