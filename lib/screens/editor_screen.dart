@@ -8,8 +8,8 @@ import 'package:fsdmovil/services/srs_word_service.dart';
 
 const _pink = Color(0xFFE8365D);
 const _darkBg = Color(0xFF0F1017);
-const _cardBg = Color(0xFF191B24);
-const _fieldBg = Color(0xFF1E2030);
+const _cardBg = Color(0xFF252838);
+const _fieldBg = Color(0xFF252838);
 const _borderColor = Color(0xFF2A2D3A);
 const _textGrey = Color(0xFF8E8E93);
 
@@ -845,16 +845,16 @@ class _EditorScreenState extends State<EditorScreen> {
         hintText: hint,
         hintStyle: const TextStyle(color: _textGrey),
         filled: true,
-        fillColor: _fieldBg,
+        fillColor: Theme.of(context).colorScheme.surface,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: _borderColor),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: _borderColor),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -894,9 +894,9 @@ class _EditorScreenState extends State<EditorScreen> {
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
-              color: _fieldBg,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _borderColor),
+              border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
             ),
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -904,7 +904,7 @@ class _EditorScreenState extends State<EditorScreen> {
               child: DropdownButton<String>(
                 value: validValue,
                 isExpanded: true,
-                dropdownColor: _cardBg,
+                dropdownColor: Theme.of(context).colorScheme.surface,
                 iconEnabledColor: _textGrey,
                 hint: Text(
                   hint.isEmpty ? 'Seleccionar...' : hint,
@@ -1950,11 +1950,11 @@ class _EditorScreenState extends State<EditorScreen> {
                           children: [
                             Container(
                               decoration: BoxDecoration(
-                                color: _cardBg,
+                                color: Theme.of(context).colorScheme.surface,
                                 borderRadius:
                                     BorderRadius.circular(14),
                                 border:
-                                    Border.all(color: _borderColor),
+                                    Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                               ),
                               padding:
                                   const EdgeInsets.symmetric(
@@ -1966,7 +1966,7 @@ class _EditorScreenState extends State<EditorScreen> {
                                       ? _selectedSectionId
                                       : null,
                                   isExpanded: true,
-                                  dropdownColor: _cardBg,
+                                  dropdownColor: Theme.of(context).colorScheme.surface,
                                   iconEnabledColor: _textGrey,
                                   style: const TextStyle(
                                     color: Colors.white,
@@ -1995,11 +1995,11 @@ class _EditorScreenState extends State<EditorScreen> {
                             Container(
                               padding: const EdgeInsets.all(18),
                               decoration: BoxDecoration(
-                                color: _cardBg,
+                                color: Theme.of(context).colorScheme.surface,
                                 borderRadius:
                                     BorderRadius.circular(22),
                                 border:
-                                    Border.all(color: _borderColor),
+                                    Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                               ),
                               child: _buildSectionContent(),
                             ),
@@ -2127,17 +2127,17 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
         hintStyle:
             const TextStyle(color: _textGrey, fontSize: 13),
         filled: true,
-        fillColor: _cardBg,
+        fillColor: Theme.of(context).colorScheme.surface,
         isDense: true,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _borderColor),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _borderColor),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
@@ -2152,10 +2152,10 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _fieldBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: widget.isDraft ? _pink.withOpacity(0.45) : _borderColor,
+          color: widget.isDraft ? _pink.withOpacity(0.45) : Theme.of(context).colorScheme.outlineVariant,
         ),
       ),
       child: Column(
@@ -2233,9 +2233,9 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                   ignoring: isTakenByOther,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: _cardBg,
+                      color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _borderColor),
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                     ),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 4),
@@ -2243,7 +2243,7 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                       child: DropdownButton<String>(
                         value: valid,
                         isExpanded: true,
-                        dropdownColor: _cardBg,
+                        dropdownColor: Theme.of(context).colorScheme.surface,
                         iconEnabledColor: _textGrey,
                         hint: const Text('Seleccionar...',
                             style: TextStyle(color: _textGrey)),

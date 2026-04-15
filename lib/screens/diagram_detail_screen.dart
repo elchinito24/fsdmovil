@@ -16,7 +16,10 @@ const _diagramTypeMap = <String, String>{
 };
 
 // Types that support the interactive (cytoscape) visual editor
-const _interactiveTypes = {'flowchart', 'use-case', 'activity', 'state'};
+const _interactiveTypes = {
+  'flowchart', 'use-case', 'activity', 'state',
+  'class', 'sequence', 'er', 'mr',
+};
 
 enum _ViewMode { visual, code }
 
@@ -142,11 +145,78 @@ class _DiagramDetailScreenState extends State<DiagramDetailScreen> {
   }
 
   void _onInteractiveCodeChanged(String newCode) {
+    if (newCode.startsWith('__rename:')) {
+      final parts = newCode.substring(9).split(':');
+      final nodeId = parts[0];
+      final currentLabel = parts.length > 1 ? parts.sublist(1).join(':') : '';
+      _showNodeRenameDialog(nodeId, currentLabel);
+      return;
+    }
     if (newCode == _codeController.text) return;
     _codeController.removeListener(_onCodeChanged);
     _codeController.text = newCode;
     _codeController.addListener(_onCodeChanged);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _showNodeRenameDialog(String nodeId, String currentLabel) async {
+    final controller = TextEditingController(text: currentLabel);
+    final newLabel = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E2130),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Renombrar nodo',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          cursorColor: fsdPink,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: const Color(0xFF252838),
+            hintText: 'Nombre del nodo',
+            hintStyle: const TextStyle(color: fsdTextGrey),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: fsdBorderColor),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: fsdBorderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: fsdPink),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar', style: TextStyle(color: fsdTextGrey)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            style: FilledButton.styleFrom(
+              backgroundColor: fsdPink,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (newLabel != null && newLabel.isNotEmpty) {
+      final safe = newLabel.replaceAll("'", "\\'");
+      _interactiveController.runJavaScript("renameNode('$nodeId','$safe')");
+    }
   }
 
   /// Cytoscape-based interactive editor for flow/use_case/activity/state diagrams.
@@ -259,7 +329,38 @@ var cy = cytoscape({
         'target-arrow-shape': 'triangle', 'curve-style': 'bezier',
         'label': 'data(label)', 'font-size': '11px', 'color': '#8E8E93',
         'text-background-color': '#0F1017', 'text-background-opacity': 1, 'text-background-padding': '3px' } },
-    { selector: 'edge:selected', style: { 'line-color': '#E8365D', 'target-arrow-color': '#E8365D' } }
+    { selector: 'edge:selected', style: { 'line-color': '#E8365D', 'target-arrow-color': '#E8365D' } },
+    { selector: 'node.decision', style: { 'shape': 'diamond', 'padding': '16px' } },
+    { selector: 'node.start', style: { 'shape': 'ellipse', 'background-color': '#E8365D', 'border-color': '#E8365D', 'color': '#fff' } },
+    { selector: 'node.end', style: { 'shape': 'ellipse', 'background-color': '#1BC47D', 'border-color': '#1BC47D', 'color': '#fff' } },
+    { selector: 'node.note', style: { 'shape': 'rectangle', 'background-color': '#F2A91D22', 'border-color': '#F2A91D', 'color': '#F2A91D' } },
+    { selector: 'node.actor', style: { 'shape': 'ellipse', 'background-color': '#FF9800', 'border-color': '#FF9800', 'color': '#fff' } },
+    { selector: 'node.usecase', style: { 'shape': 'ellipse', 'background-color': '#55A6FF22', 'border-color': '#55A6FF', 'color': '#CDD3DE' } },
+    { selector: 'node.boundary', style: { 'shape': 'rectangle', 'background-color': '#1E2130', 'border-color': '#55A6FF', 'border-style': 'dashed', 'border-width': 2, 'color': '#CDD3DE' } },
+    { selector: 'node.interface-cls', style: { 'shape': 'rectangle', 'background-color': '#1E2130', 'border-color': '#9B59B6', 'border-style': 'dashed', 'border-width': 2, 'color': '#9B59B6' } },
+    { selector: 'node.abstract-cls', style: { 'shape': 'roundrectangle', 'background-color': '#2C2C3E', 'border-color': '#E8365D', 'border-width': 2, 'color': '#E8365D' } },
+    { selector: 'node.er-attr', style: { 'shape': 'ellipse', 'background-color': '#1E2130', 'border-color': '#1BC47D', 'color': '#1BC47D', 'padding': '6px' } },
+    { selector: 'node.er-weak', style: { 'shape': 'rectangle', 'background-color': '#1E2130', 'border-color': '#F2A91D', 'border-style': 'dashed', 'border-width': 2, 'color': '#F2A91D' } },
+    { selector: 'node.fork-join', style: { 'shape': 'rectangle', 'background-color': '#CDD3DE', 'border-color': '#CDD3DE', 'height': '14px', 'color': '#0F1017', 'font-size': '8px' } },
+    { selector: 'node.composite', style: { 'shape': 'roundrectangle', 'background-color': '#1A1A2E', 'border-color': '#55A6FF', 'border-width': 2, 'color': '#CDD3DE' } },
+    { selector: 'node.table-node', style: { 'shape': 'rectangle', 'background-color': '#1E2130', 'border-color': '#E8365D', 'border-width': 2, 'color': '#CDD3DE' } },
+    { selector: 'node.pk-field', style: { 'shape': 'roundrectangle', 'background-color': '#E8365D22', 'border-color': '#E8365D', 'color': '#E8365D', 'padding': '8px' } },
+    { selector: 'node.fk-field', style: { 'shape': 'roundrectangle', 'background-color': '#55A6FF22', 'border-color': '#55A6FF', 'color': '#55A6FF', 'padding': '8px' } },
+    { selector: 'node.seq-actor', style: { 'shape': 'ellipse', 'background-color': '#FF9800', 'border-color': '#FF9800', 'color': '#fff' } },
+    { selector: 'node.seq-obj', style: { 'shape': 'rectangle', 'background-color': '#2C2C3E', 'border-color': '#55A6FF', 'border-width': 2, 'color': '#CDD3DE' } },
+    { selector: 'node.fragment', style: { 'shape': 'rectangle', 'background-color': '#1BC47D11', 'border-color': '#1BC47D', 'border-style': 'dashed', 'color': '#1BC47D' } },
+    { selector: 'edge.dashed', style: { 'line-style': 'dashed' } },
+    { selector: 'edge.dotted', style: { 'line-style': 'dotted' } },
+    { selector: 'edge.inheritance', style: { 'target-arrow-shape': 'triangle', 'target-arrow-fill': 'hollow', 'target-arrow-color': '#CDD3DE', 'line-color': '#3A3A3C' } },
+    { selector: 'edge.composition', style: { 'source-arrow-shape': 'diamond', 'source-arrow-color': '#CDD3DE', 'line-color': '#3A3A3C', 'target-arrow-shape': 'none' } },
+    { selector: 'edge.aggregation', style: { 'source-arrow-shape': 'diamond', 'source-arrow-fill': 'hollow', 'source-arrow-color': '#CDD3DE', 'line-color': '#3A3A3C', 'target-arrow-shape': 'none' } },
+    { selector: 'edge.dependency', style: { 'line-style': 'dashed', 'target-arrow-shape': 'vee', 'target-arrow-color': '#8E8E93', 'line-color': '#8E8E93' } },
+    { selector: 'edge.extend-rel', style: { 'line-style': 'dashed', 'target-arrow-shape': 'triangle', 'color': '#F2A91D', 'line-color': '#F2A91D', 'target-arrow-color': '#F2A91D', 'text-background-color': '#0F1017', 'text-background-opacity': 1, 'text-background-padding': '3px' } },
+    { selector: 'edge.include-rel', style: { 'line-style': 'dashed', 'target-arrow-shape': 'triangle', 'color': '#55A6FF', 'line-color': '#55A6FF', 'target-arrow-color': '#55A6FF', 'text-background-color': '#0F1017', 'text-background-opacity': 1, 'text-background-padding': '3px' } },
+    { selector: 'edge.assoc-line', style: { 'target-arrow-shape': 'none', 'line-color': '#3A3A3C' } },
+    { selector: 'edge.one-to-one', style: { 'color': '#1BC47D', 'line-color': '#1BC47D', 'target-arrow-shape': 'none', 'text-background-color': '#0F1017', 'text-background-opacity': 1, 'text-background-padding': '3px' } },
+    { selector: 'edge.one-to-many', style: { 'color': '#55A6FF', 'line-color': '#55A6FF', 'target-arrow-shape': 'none', 'text-background-color': '#0F1017', 'text-background-opacity': 1, 'text-background-padding': '3px' } },
+    { selector: 'edge.many-to-many', style: { 'color': '#F2A91D', 'line-color': '#F2A91D', 'target-arrow-shape': 'none', 'text-background-color': '#0F1017', 'text-background-opacity': 1, 'text-background-padding': '3px' } }
   ],
   layout: { name: 'breadthfirst', directed: true, padding: 20, spacingFactor: 1.4 },
   userZoomingEnabled: true, userPanningEnabled: true, minZoom: 0.3, maxZoom: 3,
@@ -285,9 +386,12 @@ cy.on('tap', function(e) {
 cy.on('dbltap', 'node', function(e) {
   if (edgeMode) return;
   var node = e.target;
-  var newLabel = prompt('Nombre del nodo:', node.data('label'));
-  if (newLabel !== null && newLabel.trim()) { node.data('label', newLabel.trim()); emitCode(); }
+  if (typeof FlutterBridge !== 'undefined') FlutterBridge.postMessage('__rename:' + node.id() + ':' + node.data('label'));
 });
+function renameNode(id, newLabel) {
+  var n = cy.getElementById(id);
+  if (!n.empty()) { n.data('label', newLabel); emitCode(); }
+}
 cy.on('free', 'node', function() { emitCode(); });
 cy.on('remove', function() { emitCode(); });
 cy.on('add', 'edge', function() { emitCode(); });
@@ -298,6 +402,39 @@ function addNode() {
   cy.layout({ name: 'breadthfirst', directed: true, padding: 20 }).run();
   emitCode();
 }
+function addNodeOfType(shape, cls, defaultLabel) {
+  nodeCounter++;
+  var id = (cls || 'N') + nodeCounter;
+  var el = { data: { id: id, label: defaultLabel || 'Nodo ' + nodeCounter } };
+  if (cls) el.classes = cls;
+  cy.add(el);
+  cy.layout({ name: 'breadthfirst', directed: true, padding: 20 }).run();
+  emitCode();
+}
+function addEdgeOfType(style) {
+  if (cy.nodes().length < 2) { alert('Necesitas al menos 2 nodos.'); return; }
+  var all = cy.nodes();
+  var src = all[0].id(), tgt = all[1].id();
+  var el = { data: { id: 'e' + Date.now(), source: src, target: tgt, label: '' } };
+  if (style) el.classes = style;
+  cy.add(el); emitCode();
+}
+function addEdgeLabeled(cls, lbl) {
+  if (cy.nodes().length < 2) { alert('Necesitas al menos 2 nodos.'); return; }
+  var all = cy.nodes();
+  var src = all[0].id(), tgt = all[1].id();
+  var el = { data: { id: 'e' + Date.now(), source: src, target: tgt, label: lbl } };
+  if (cls) el.classes = cls;
+  cy.add(el); emitCode();
+}
+function addSelfEdge() {
+  if (cy.nodes().length < 1) { alert('Necesitas al menos 1 nodo.'); return; }
+  var n = cy.nodes(':selected').first();
+  if (n.empty()) n = cy.nodes().first();
+  cy.add({ data: { id: 'e' + Date.now(), source: n.id(), target: n.id(), label: 'self' } });
+  emitCode();
+}
+function fitView() { cy.fit(undefined, 20); }
 function toggleEdgeMode() {
   edgeMode = !edgeMode;
   if (!edgeMode && edgeSource) { edgeSource.removeClass('edge-source'); edgeSource = null; }
@@ -353,6 +490,14 @@ function emitCode() {
   }
 
   Future<void> _saveManual() => _save();
+
+  String get _diagramType {
+    final d = diagram;
+    if (d == null) return '';
+    return (d['diagram_type'] ?? d['type'] ?? '').toString().toLowerCase().replaceAll('_', '-');
+  }
+
+  void _jsCall(String fn) => _interactiveController.runJavaScript(fn);
 
   Future<void> _addNode() =>
       _interactiveController.runJavaScript('addNode()');
@@ -788,14 +933,13 @@ function emitCode() {
                                         bottom: 0,
                                         child: _InteractiveToolPanel(
                                           isOpen: _bottomPanelOpen,
+                                          diagramType: _diagramType,
                                           onToggle: () => setState(() =>
                                               _bottomPanelOpen =
                                                   !_bottomPanelOpen),
                                           edgeModeActive: _edgeModeActive,
-                                          onAddNode: _addNode,
+                                          onJsCall: _jsCall,
                                           onToggleEdge: _toggleEdgeMode,
-                                          onDelete: _deleteSelected,
-                                          onAutoLayout: _autoLayout,
                                         ),
                                       ),
                                     ],
@@ -1683,25 +1827,145 @@ class _ErrorState extends StatelessWidget {
 
 class _InteractiveToolPanel extends StatelessWidget {
   final bool isOpen;
+  final String diagramType;
   final VoidCallback onToggle;
   final bool edgeModeActive;
-  final VoidCallback onAddNode;
+  final void Function(String) onJsCall;
   final VoidCallback onToggleEdge;
-  final VoidCallback onDelete;
-  final VoidCallback onAutoLayout;
 
   const _InteractiveToolPanel({
     required this.isOpen,
+    required this.diagramType,
     required this.onToggle,
     required this.edgeModeActive,
-    required this.onAddNode,
+    required this.onJsCall,
     required this.onToggleEdge,
-    required this.onDelete,
-    required this.onAutoLayout,
   });
+
+  List<_ToolItem> get _items {
+    final canvasItems = <_ToolItem>[
+      _ToolItem(label: edgeModeActive ? 'Cancelar' : 'Conectar', icon: Icons.linear_scale_rounded, color: const Color(0xFF55A6FF), onTap: onToggleEdge, active: edgeModeActive),
+      _ToolItem(label: 'Eliminar', icon: Icons.delete_outline_rounded, color: fsdPink, onTap: () => onJsCall('deleteSelected()')),
+      _ToolItem(label: 'Layout', icon: Icons.auto_fix_high_rounded, color: const Color(0xFF1BC47D), onTap: () => onJsCall('layoutAuto()')),
+      _ToolItem(label: 'Ajustar', icon: Icons.fit_screen_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall('fitView()')),
+    ];
+
+    switch (diagramType) {
+      case 'flowchart':
+        return [
+          _ToolItem(label: 'Inicio', icon: Icons.play_circle_outline_rounded, color: fsdPink, onTap: () => onJsCall("addNodeOfType('ellipse','start','Inicio')")),
+          _ToolItem(label: 'Fin', icon: Icons.stop_circle_outlined, color: const Color(0xFF1BC47D), onTap: () => onJsCall("addNodeOfType('ellipse','end','Fin')")),
+          _ToolItem(label: 'Proceso', icon: Icons.crop_square_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('roundrectangle',null,'Proceso')")),
+          _ToolItem(label: 'Decisión', icon: Icons.diamond_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('diamond','decision','¿Condición?')")),
+          _ToolItem(label: 'Nota', icon: Icons.sticky_note_2_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('rectangle','note','Nota')")),
+          _ToolItem(label: 'Flecha', icon: Icons.arrow_forward_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall('addEdgeOfType(null)')),
+          _ToolItem(label: 'Punteada', icon: Icons.more_horiz_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall("addEdgeOfType('dashed')")),
+          _ToolItem(label: 'Sin flecha', icon: Icons.horizontal_rule_rounded, color: const Color(0xFF3A3A3C), onTap: () => onJsCall("addEdgeOfType('assoc-line')")),
+          ...canvasItems,
+        ];
+      case 'activity':
+        return [
+          _ToolItem(label: 'Inicio', icon: Icons.play_circle_outline_rounded, color: fsdPink, onTap: () => onJsCall("addNodeOfType('ellipse','start','Inicio')")),
+          _ToolItem(label: 'Fin', icon: Icons.stop_circle_outlined, color: const Color(0xFF1BC47D), onTap: () => onJsCall("addNodeOfType('ellipse','end','Fin')")),
+          _ToolItem(label: 'Acción', icon: Icons.crop_square_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('roundrectangle',null,'Acción')")),
+          _ToolItem(label: 'Decisión', icon: Icons.diamond_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('diamond','decision','¿Condición?')")),
+          _ToolItem(label: 'Fork/Join', icon: Icons.compare_arrows_rounded, color: const Color(0xFFCDD3DE), onTap: () => onJsCall("addNodeOfType('rectangle','fork-join','Fork')")),
+          _ToolItem(label: 'Nota', icon: Icons.sticky_note_2_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('rectangle','note','Nota')")),
+          _ToolItem(label: 'Transición', icon: Icons.arrow_forward_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall('addEdgeOfType(null)')),
+          _ToolItem(label: 'Punteada', icon: Icons.more_horiz_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall("addEdgeOfType('dashed')")),
+          ...canvasItems,
+        ];
+      case 'use-case':
+        return [
+          _ToolItem(label: 'Actor', icon: Icons.person_outline_rounded, color: const Color(0xFFFF9800), onTap: () => onJsCall("addNodeOfType('ellipse','actor','Actor')")),
+          _ToolItem(label: 'Caso de Uso', icon: Icons.radio_button_unchecked_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('ellipse','usecase','Caso de Uso')")),
+          _ToolItem(label: 'Sistema', icon: Icons.crop_square_rounded, color: const Color(0xFFCDD3DE), onTap: () => onJsCall("addNodeOfType('rectangle','boundary','Sistema')")),
+          _ToolItem(label: 'Nota', icon: Icons.sticky_note_2_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('rectangle','note','Nota')")),
+          _ToolItem(label: 'Asociación', icon: Icons.arrow_forward_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall('addEdgeOfType(null)')),
+          _ToolItem(label: 'Include', icon: Icons.subdirectory_arrow_right_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addEdgeLabeled('include-rel','<<include>>')")),
+          _ToolItem(label: 'Extend', icon: Icons.call_split_rounded, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addEdgeLabeled('extend-rel','<<extend>>')")),
+          _ToolItem(label: 'Sin flecha', icon: Icons.horizontal_rule_rounded, color: const Color(0xFF3A3A3C), onTap: () => onJsCall("addEdgeOfType('assoc-line')")),
+          ...canvasItems,
+        ];
+      case 'class':
+        return [
+          _ToolItem(label: 'Clase', icon: Icons.crop_square_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('roundrectangle',null,'Clase')")),
+          _ToolItem(label: 'Interfaz', icon: Icons.layers_outlined, color: const Color(0xFF9B59B6), onTap: () => onJsCall("addNodeOfType('rectangle','interface-cls','<<interface>>')")),
+          _ToolItem(label: 'Abstracta', icon: Icons.rectangle_outlined, color: fsdPink, onTap: () => onJsCall("addNodeOfType('roundrectangle','abstract-cls','<<abstract>>')")),
+          _ToolItem(label: 'Nota', icon: Icons.sticky_note_2_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('rectangle','note','Nota')")),
+          _ToolItem(label: 'Herencia', icon: Icons.call_merge_rounded, color: const Color(0xFFCDD3DE), onTap: () => onJsCall("addEdgeOfType('inheritance')")),
+          _ToolItem(label: 'Composición', icon: Icons.diamond_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addEdgeOfType('composition')")),
+          _ToolItem(label: 'Agregación', icon: Icons.diamond_outlined, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addEdgeOfType('aggregation')")),
+          _ToolItem(label: 'Dependencia', icon: Icons.more_horiz_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall("addEdgeOfType('dependency')")),
+          _ToolItem(label: 'Asociación', icon: Icons.arrow_forward_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall('addEdgeOfType(null)')),
+          ...canvasItems,
+        ];
+      case 'sequence':
+        return [
+          _ToolItem(label: 'Actor', icon: Icons.person_outline_rounded, color: const Color(0xFFFF9800), onTap: () => onJsCall("addNodeOfType('ellipse','seq-actor','Actor')")),
+          _ToolItem(label: 'Objeto', icon: Icons.rectangle_outlined, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('rectangle','seq-obj','Objeto')")),
+          _ToolItem(label: 'Fragmento', icon: Icons.flip_to_front_outlined, color: const Color(0xFF1BC47D), onTap: () => onJsCall("addNodeOfType('rectangle','fragment','Fragment')")),
+          _ToolItem(label: 'Nota', icon: Icons.sticky_note_2_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('rectangle','note','Nota')")),
+          _ToolItem(label: 'Mensaje', icon: Icons.arrow_forward_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall('addEdgeOfType(null)')),
+          _ToolItem(label: 'Retorno', icon: Icons.keyboard_return_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addEdgeOfType('dashed')")),
+          _ToolItem(label: 'Asíncrono', icon: Icons.double_arrow_rounded, color: const Color(0xFFCDD3DE), onTap: () => onJsCall("addEdgeOfType('dotted')")),
+          _ToolItem(label: 'Auto-msg', icon: Icons.refresh_rounded, color: const Color(0xFFF2A91D), onTap: () => onJsCall('addSelfEdge()')),
+          ...canvasItems,
+        ];
+      case 'er':
+        return [
+          _ToolItem(label: 'Entidad', icon: Icons.crop_square_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('rectangle',null,'Entidad')")),
+          _ToolItem(label: 'Atributo', icon: Icons.radio_button_unchecked_rounded, color: const Color(0xFF1BC47D), onTap: () => onJsCall("addNodeOfType('ellipse','er-attr','atributo')")),
+          _ToolItem(label: 'Relación', icon: Icons.diamond_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('diamond','decision','relación')")),
+          _ToolItem(label: 'E. Débil', icon: Icons.crop_din_rounded, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('rectangle','er-weak','E. Débil')")),
+          _ToolItem(label: 'Línea', icon: Icons.horizontal_rule_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall("addEdgeOfType('assoc-line')")),
+          _ToolItem(label: '1:1', icon: Icons.looks_one_outlined, color: const Color(0xFF1BC47D), onTap: () => onJsCall("addEdgeLabeled('one-to-one','1:1')")),
+          _ToolItem(label: '1:N', icon: Icons.looks_two_outlined, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addEdgeLabeled('one-to-many','1:N')")),
+          _ToolItem(label: 'N:M', icon: Icons.all_inclusive_rounded, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addEdgeLabeled('many-to-many','N:M')")),
+          ...canvasItems,
+        ];
+      case 'state':
+        return [
+          _ToolItem(label: 'Inicial', icon: Icons.play_circle_filled_rounded, color: fsdPink, onTap: () => onJsCall("addNodeOfType('ellipse','start','●')")),
+          _ToolItem(label: 'Estado', icon: Icons.crop_square_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('roundrectangle',null,'Estado')")),
+          _ToolItem(label: 'Final', icon: Icons.stop_circle_rounded, color: const Color(0xFF1BC47D), onTap: () => onJsCall("addNodeOfType('ellipse','end','◉')")),
+          _ToolItem(label: 'Compuesto', icon: Icons.view_quilt_outlined, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('roundrectangle','composite','Compuesto')")),
+          _ToolItem(label: 'Nota', icon: Icons.sticky_note_2_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('rectangle','note','Nota')")),
+          _ToolItem(label: 'Transición', icon: Icons.arrow_forward_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall('addEdgeOfType(null)')),
+          _ToolItem(label: 'Interna', icon: Icons.more_horiz_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall("addEdgeOfType('dashed')")),
+          _ToolItem(label: 'Auto-trans.', icon: Icons.refresh_rounded, color: const Color(0xFFF2A91D), onTap: () => onJsCall('addSelfEdge()')),
+          ...canvasItems,
+        ];
+      case 'mr':
+        return [
+          _ToolItem(label: 'Tabla', icon: Icons.table_chart_outlined, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('rectangle','table-node','Tabla')")),
+          _ToolItem(label: 'PK', icon: Icons.vpn_key_outlined, color: fsdPink, onTap: () => onJsCall("addNodeOfType('roundrectangle','pk-field','PK: id')")),
+          _ToolItem(label: 'FK', icon: Icons.link_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('roundrectangle','fk-field','FK: id')")),
+          _ToolItem(label: 'Campo', icon: Icons.text_fields_rounded, color: const Color(0xFFCDD3DE), onTap: () => onJsCall("addNodeOfType('roundrectangle',null,'campo')")),
+          _ToolItem(label: '1:1', icon: Icons.looks_one_outlined, color: const Color(0xFF1BC47D), onTap: () => onJsCall("addEdgeLabeled('one-to-one','1:1')")),
+          _ToolItem(label: '1:N', icon: Icons.looks_two_outlined, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addEdgeLabeled('one-to-many','1:N')")),
+          _ToolItem(label: 'N:M', icon: Icons.all_inclusive_rounded, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addEdgeLabeled('many-to-many','N:M')")),
+          _ToolItem(label: 'Relación', icon: Icons.arrow_forward_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall('addEdgeOfType(null)')),
+          ...canvasItems,
+        ];
+      default:
+        return [
+          _ToolItem(label: 'Nodo', icon: Icons.crop_square_rounded, color: const Color(0xFF55A6FF), onTap: () => onJsCall("addNodeOfType('roundrectangle',null,'Nodo')")),
+          _ToolItem(label: 'Inicio', icon: Icons.play_circle_outline_rounded, color: fsdPink, onTap: () => onJsCall("addNodeOfType('ellipse','start','Inicio')")),
+          _ToolItem(label: 'Fin', icon: Icons.stop_circle_outlined, color: const Color(0xFF1BC47D), onTap: () => onJsCall("addNodeOfType('ellipse','end','Fin')")),
+          _ToolItem(label: 'Decisión', icon: Icons.diamond_outlined, color: const Color(0xFFF2A91D), onTap: () => onJsCall("addNodeOfType('diamond','decision','¿Condición?')")),
+          _ToolItem(label: 'Flecha', icon: Icons.arrow_forward_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall('addEdgeOfType(null)')),
+          _ToolItem(label: 'Punteada', icon: Icons.more_horiz_rounded, color: const Color(0xFF8E8E93), onTap: () => onJsCall("addEdgeOfType('dashed')")),
+          ...canvasItems,
+        ];
+    }
+  }
+
+  static const double _panelHeight = 164.0;
 
   @override
   Widget build(BuildContext context) {
+    final items = _items;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1710,77 +1974,84 @@ class _InteractiveToolPanel extends StatelessWidget {
           child: GestureDetector(
             onTap: onToggle,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 28, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFF1C1C2E),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(16),
-                ),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 border: Border.all(color: fsdBorderColor),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x55000000),
-                    blurRadius: 10,
-                    offset: Offset(0, -3),
-                  ),
-                ],
+                boxShadow: const [BoxShadow(color: Color(0x55000000), blurRadius: 10, offset: Offset(0, -3))],
               ),
               child: AnimatedRotation(
                 turns: isOpen ? 0.5 : 0,
                 duration: const Duration(milliseconds: 220),
-                child: const Icon(
-                  Icons.keyboard_arrow_up_rounded,
-                  color: Colors.white,
-                  size: 22,
-                ),
+                child: const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white, size: 22),
               ),
             ),
           ),
         ),
-        // ── Panel con botones de herramientas ──
+        // ── Grid de componentes ──
         AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeInOut,
-          height: isOpen ? 72 : 0,
+          height: isOpen ? _panelHeight : 0,
           clipBehavior: Clip.hardEdge,
           decoration: const BoxDecoration(
             color: Color(0xFF1C1C2E),
             border: Border(top: BorderSide(color: fsdBorderColor)),
           ),
-          child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _ToolBtn(
-                  label: '+ Nodo',
-                  icon: Icons.add_circle_outline_rounded,
-                  onTap: onAddNode,
-                ),
-                _ToolBtn(
-                  label: edgeModeActive ? 'Cancelar' : 'Conectar',
-                  icon: Icons.linear_scale_rounded,
-                  onTap: onToggleEdge,
-                  active: edgeModeActive,
-                ),
-                _ToolBtn(
-                  label: 'Eliminar',
-                  icon: Icons.delete_outline_rounded,
-                  onTap: onDelete,
-                  danger: true,
-                ),
-                _ToolBtn(
-                  label: 'Auto layout',
-                  icon: Icons.account_tree_outlined,
-                  onTap: onAutoLayout,
-                ),
-              ],
-            ),
+          child: GridView.count(
+            crossAxisCount: 4,
+            childAspectRatio: 1.15,
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            mainAxisSpacing: 6,
+            crossAxisSpacing: 6,
+            physics: const BouncingScrollPhysics(),
+            children: items.map((item) => _ToolTile(item: item)).toList(),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ToolItem {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final bool active;
+  const _ToolItem({required this.label, required this.icon, required this.color, required this.onTap, this.active = false});
+}
+
+class _ToolTile extends StatelessWidget {
+  final _ToolItem item;
+  const _ToolTile({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: item.onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: item.active ? fsdPink.withOpacity(0.15) : const Color(0xFF252838),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: item.active ? fsdPink : fsdBorderColor),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(item.icon, size: 20, color: item.active ? fsdPink : item.color),
+            const SizedBox(height: 4),
+            Text(
+              item.label,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: item.active ? fsdPink : fsdTextGrey, fontSize: 10, fontWeight: FontWeight.w500),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
