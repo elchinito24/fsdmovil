@@ -163,227 +163,296 @@ class _TeamMeetingLobbyScreenState extends State<TeamMeetingLobbyScreen> {
     }
   }
 
+  void _goHome() {
+    context.go('/dashboard');
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MainAppShell(
-      selectedItem: null,
-      eyebrow: 'Reunión de equipo',
-      titleWhite: 'Sala de ',
-      titlePink: 'reuniones',
-      description:
-          'Crea una reunión en equipo o únete a una sesión activa del proyecto.',
-      showTopNav: false,
-      child: loading
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.only(top: 60),
-                child: CircularProgressIndicator(color: _pink),
-              ),
-            )
-          : SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Card(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Crear reunión',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Workspace',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _DropdownBox(
-                          value: selectedWorkspaceId,
-                          items: workspaces
-                              .map(
-                                (e) => DropdownMenuItem<String>(
-                                  value: e['id'].toString(),
-                                  child: Text(
-                                    (e['name'] ?? 'Workspace').toString(),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) async {
-                            setState(() {
-                              selectedWorkspaceId = value;
-                              selectedProjectId = null;
-                            });
-                            _filterProjectsForWorkspace();
-                            setState(() {});
-                            await _loadActiveMeetings();
-                          },
-                        ),
-                        const SizedBox(height: 14),
-                        const Text(
-                          'Proyecto',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _DropdownBox(
-                          value: selectedProjectId,
-                          items: projects
-                              .map(
-                                (e) => DropdownMenuItem<String>(
-                                  value: e['id'].toString(),
-                                  child: Text(
-                                    (e['name'] ?? 'Proyecto').toString(),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: projects.isEmpty
-                              ? null
-                              : (value) async {
-                                  setState(() {
-                                    selectedProjectId = value;
-                                  });
-                                  await _loadActiveMeetings();
-                                },
-                        ),
-                        if (projects.isEmpty) ...[
-                          const SizedBox(height: 8),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _goHome();
+      },
+      child: MainAppShell(
+        selectedItem: null,
+        eyebrow: 'Reunión de equipo',
+        titleWhite: 'Sala de ',
+        titlePink: 'reuniones',
+        description:
+            'Crea una reunión en equipo o únete a una sesión activa del proyecto.',
+        showTopNav: false,
+        child: loading
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.only(top: 60),
+                  child: CircularProgressIndicator(color: _pink),
+                ),
+              )
+            : SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Card(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           const Text(
-                            'No hay proyectos disponibles para el workspace seleccionado.',
-                            style: TextStyle(color: _textGrey),
-                          ),
-                        ],
-                        const SizedBox(height: 14),
-                        const Text(
-                          'Título opcional',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          onChanged: (value) => title = value,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Ej. Revisión de requerimientos',
-                            hintStyle: const TextStyle(color: _textGrey),
-                            filled: true,
-                            fillColor: const Color(0xFF1E2030),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: _borderColor),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: _borderColor),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: _pink),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        SwitchListTile(
-                          value: recordingEnabled,
-                          onChanged: (value) {
-                            setState(() {
-                              recordingEnabled = value;
-                            });
-                          },
-                          activeColor: _pink,
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            'Grabar para análisis IA',
+                            'Crear reunión',
                             style: TextStyle(
                               color: Colors.white,
+                              fontSize: 18,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          subtitle: const Text(
-                            'Si activas esta opción, la reunión se grabará para generar resumen, requerimientos y tareas al finalizar.',
-                            style: TextStyle(color: _textGrey, height: 1.4),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: selectedProjectId == null
+                                  ? null
+                                  : () {
+                                      context.push(
+                                        '/team-meeting-history/${int.parse(selectedProjectId!)}',
+                                      );
+                                    },
+                              icon: const Icon(Icons.history_rounded),
+                              label: const Text(
+                                'Ver historial de llamadas',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: _borderColor),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                        if (errorMessage != null) ...[
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Workspace',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _DropdownBox(
+                            value: selectedWorkspaceId,
+                            items: workspaces
+                                .map(
+                                  (e) => DropdownMenuItem<String>(
+                                    value: e['id'].toString(),
+                                    child: Text(
+                                      (e['name'] ?? 'Workspace').toString(),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) async {
+                              setState(() {
+                                selectedWorkspaceId = value;
+                                selectedProjectId = null;
+                              });
+                              _filterProjectsForWorkspace();
+                              setState(() {});
+                              await _loadActiveMeetings();
+                            },
+                          ),
                           const SizedBox(height: 14),
-                          Text(
-                            errorMessage!,
-                            style: const TextStyle(color: _pink),
+                          const Text(
+                            'Proyecto',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ],
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: creating ? null : _createMeeting,
-                            icon: const Icon(Icons.video_call_rounded),
-                            label: Text(
-                              creating ? 'Creando...' : 'Crear reunión',
-                              style: const TextStyle(
+                          const SizedBox(height: 8),
+                          _DropdownBox(
+                            value: selectedProjectId,
+                            items: projects
+                                .map(
+                                  (e) => DropdownMenuItem<String>(
+                                    value: e['id'].toString(),
+                                    child: Text(
+                                      (e['name'] ?? 'Proyecto').toString(),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: projects.isEmpty
+                                ? null
+                                : (value) async {
+                                    setState(() {
+                                      selectedProjectId = value;
+                                    });
+                                    await _loadActiveMeetings();
+                                  },
+                          ),
+                          if (projects.isEmpty) ...[
+                            const SizedBox(height: 8),
+                            const Text(
+                              'No hay proyectos disponibles para el workspace seleccionado.',
+                              style: TextStyle(color: _textGrey),
+                            ),
+                          ],
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Título opcional',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            onChanged: (value) => title = value,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: 'Ej. Revisión de requerimientos',
+                              hintStyle: const TextStyle(color: _textGrey),
+                              filled: true,
+                              fillColor: const Color(0xFF1E2030),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(
+                                  color: _borderColor,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(
+                                  color: _borderColor,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(color: _pink),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          SwitchListTile(
+                            value: recordingEnabled,
+                            onChanged: (value) {
+                              setState(() {
+                                recordingEnabled = value;
+                              });
+                            },
+                            activeColor: _pink,
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Grabar para análisis IA',
+                              style: TextStyle(
+                                color: Colors.white,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _pink,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                            subtitle: const Text(
+                              'Si activas esta opción, la reunión se grabará para generar resumen, requerimientos y tareas al finalizar.',
+                              style: TextStyle(color: _textGrey, height: 1.4),
+                            ),
+                          ),
+                          if (errorMessage != null) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              errorMessage!,
+                              style: const TextStyle(color: _pink),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: creating ? null : _createMeeting,
+                              icon: const Icon(Icons.video_call_rounded),
+                              label: Text(
+                                creating ? 'Creando...' : 'Crear reunión',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _pink,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Reuniones activas',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (activeMeetings.isEmpty)
-                    const _Card(
-                      child: Text(
-                        'No hay reuniones activas para este filtro.',
-                        style: TextStyle(color: _textGrey),
-                      ),
-                    )
-                  else
-                    ...activeMeetings.map(
-                      (meeting) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _MeetingActiveCard(
-                          title: (meeting['title'] ?? 'Reunión').toString(),
-                          subtitle:
-                              '${meeting['project_name'] ?? ''} • ${meeting['workspace_name'] ?? ''}',
-                          status: (meeting['status'] ?? '').toString(),
-                          onTap: () {
-                            context.push('/team-meeting-room/${meeting['id']}');
-                          },
-                        ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _goHome,
+                              icon: const Icon(Icons.home_rounded),
+                              label: const Text(
+                                'Ir al inicio',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: _borderColor),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                ],
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Reuniones activas',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (activeMeetings.isEmpty)
+                      const _Card(
+                        child: Text(
+                          'No hay reuniones activas para este filtro.',
+                          style: TextStyle(color: _textGrey),
+                        ),
+                      )
+                    else
+                      ...activeMeetings.map(
+                        (meeting) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _MeetingActiveCard(
+                            title: (meeting['title'] ?? 'Reunión').toString(),
+                            subtitle:
+                                '${meeting['project_name'] ?? ''} • ${meeting['workspace_name'] ?? ''}',
+                            status: (meeting['status'] ?? '').toString(),
+                            onTap: () {
+                              context.push(
+                                '/team-meeting-room/${meeting['id']}',
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 }
