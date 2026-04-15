@@ -26,6 +26,7 @@ import 'package:fsdmovil/screens/team_meeting_lobby_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_room_screen.dart';
 import 'package:fsdmovil/screens/team_meeting_ai_result_screen.dart';
 import 'package:fsdmovil/screens/schedule_screen.dart';
+import 'package:fsdmovil/screens/schedule_detail_screen.dart';
 
 final routeObserver = RouteObserver<PageRoute<dynamic>>();
 
@@ -210,6 +211,22 @@ final appRouter = GoRouter(
           context,
           state,
           DiagramDetailScreen(diagramId: id),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/schedule/:id',
+      pageBuilder: (context, state) {
+        final id = int.parse(state.pathParameters['id']!);
+        final extra = state.extra as Map<String, dynamic>?;
+        return _slideTransition(
+          context,
+          state,
+          ScheduleDetailScreen(
+            projectId: id,
+            projectName: extra?['name'] as String?,
+            projectCode: extra?['code'] as String?,
+          ),
         );
       },
     ),
