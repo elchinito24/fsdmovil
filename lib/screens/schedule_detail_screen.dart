@@ -134,7 +134,18 @@ class _ScheduleDetailScreenState extends State<ScheduleDetailScreen> {
     if (_tasks.isEmpty) {
       return const _EmptyTasksState();
     }
-    return _GanttView(tasks: _tasks, viewMode: _viewMode, isDark: isDark);
+    return Column(
+      children: [
+        Expanded(
+          flex: 6,
+          child: _GanttView(tasks: _tasks, viewMode: _viewMode, isDark: isDark),
+        ),
+        Expanded(
+          flex: 4,
+          child: _TasksListPanel(tasks: _tasks, isDark: isDark),
+        ),
+      ],
+    );
   }
 }
 
@@ -415,6 +426,28 @@ class _GanttViewState extends State<_GanttView> {
     super.dispose();
   }
 
+  // ── Pixel helpers ─────────────────────────────────────────────────────────
+
+  double _dateToPixel(DateTime date, DateTime minDate, _ViewMode mode, double colW) {
+    switch (mode) {
+      case _ViewMode.day:
+        return date.difference(minDate).inDays * colW;
+      case _ViewMode.week:
+        return (date.difference(minDate).inDays / 7.0) * colW;
+      case _ViewMode.month:
+        final months = (date.year - minDate.year) * 12 + (date.month - minDate.month);
+        final daysInMonth = DateTime(date.year, date.month + 1, 0).day;
+        final fraction = (date.day - 1) / daysInMonth;
+        return (months + fraction) * colW;
+    }
+  }
+
+  void _scrollToToday(double px) {
+    final offset = (px - 60).clamp(0.0, double.maxFinite);
+    if (_hHeaderCtrl.hasClients) _hHeaderCtrl.jumpTo(offset);
+    if (_hBodyCtrl.hasClients) _hBodyCtrl.jumpTo(offset);
+  }
+
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now();
@@ -422,60 +455,264 @@ class _GanttViewState extends State<_GanttView> {
     final isDark = widget.isDark;
     final tasks = widget.tasks;
 
+    // ── Date range from tasks ──────────────────────────────────────────
+    final rawMin = tasks
+        .map((t) => t.startDate!)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+    final rawMax = tasks
+        .map((t) => t.endDate!)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+
     late DateTime minDate;
-    late DateTime maxDate;
-    late double dayWidth;
+    late double colW;
+    late List<DateTime> colDates;
 
     switch (widget.viewMode) {
       case _ViewMode.day:
-        minDate = todayNorm.subtract(const Duration(days: 3));
-        maxDate = todayNorm.add(const Duration(days: 3));
-        dayWidth = 52.0;
-        break;
-      case _ViewMode.week:
-        minDate = todayNorm.subtract(const Duration(days: 6));
-        maxDate = todayNorm.add(const Duration(days: 7));
-        dayWidth = 42.0;
-        break;
-      case _ViewMode.month:
-        DateTime rawMin = tasks
-            .map((t) => t.startDate!)
-            .reduce((a, b) => a.isBefore(b) ? a : b);
-        DateTime rawMax = tasks
-            .map((t) => t.endDate!)
-            .reduce((a, b) => a.isAfter(b) ? a : b);
         minDate = DateTime(rawMin.year, rawMin.month, rawMin.day)
+            .subtract(const Duration(days: 2));
+        final maxDay = DateTime(rawMax.year, rawMax.month, rawMax.day)
+            .add(const Duration(days: 2));
+        colW = 52.0;
+        final totalDays = maxDay.difference(minDate).inDays + 1;
+        colDates = List.generate(totalDays, (i) => minDate.add(Duration(days: i)));
+        break;
+
+      case _ViewMode.week:
+        final firstDay = DateTime(rawMin.year, rawMin.month, rawMin.day)
             .subtract(const Duration(days: 3));
-        maxDate = DateTime(rawMax.year, rawMax.month, rawMax.day)
+        final daysToMon = (firstDay.weekday - DateTime.monday + 7) % 7;
+        minDate = firstDay.subtract(Duration(days: daysToMon));
+        final lastDay = DateTime(rawMax.year, rawMax.month, rawMax.day)
             .add(const Duration(days: 3));
-        dayWidth = 36.0;
+        final daysToSun = (DateTime.sunday - lastDay.weekday + 7) % 7;
+        final maxWeek = lastDay.add(Duration(days: daysToSun));
+        colW = 80.0;
+        final totalWeeks = (maxWeek.difference(minDate).inDays / 7).ceil();
+        colDates = List.generate(
+            totalWeeks, (i) => minDate.add(Duration(days: i * 7)));
+        break;
+
+      case _ViewMode.month:
+        minDate = DateTime(rawMin.year, rawMin.month, 1);
+        colW = 100.0;
+        colDates = [];
+        DateTime cur = minDate;
+        final stopDate = DateTime(rawMax.year, rawMax.month + 1, 1);
+        while (cur.isBefore(stopDate)) {
+          colDates.add(cur);
+          cur = DateTime(cur.year, cur.month + 1, 1);
+        }
         break;
     }
 
-    final totalDays = maxDate.difference(minDate).inDays + 1;
-    final dates = List.generate(totalDays, (i) => minDate.add(Duration(days: i)));
-    final monthGroups = _buildMonthGroups(dates);
-    final todayOffset = todayNorm.difference(minDate).inDays;
+    final totalCols = colDates.length;
+    final totalPx = colW * totalCols;
+    final todayPx = _dateToPixel(todayNorm, minDate, widget.viewMode, colW);
 
     final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
     final headerBg = isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB);
-    final nameBg = isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB);
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
 
-    const nameWidth = 240.0;
     const rowHeight = 54.0;
     const barHeight = 26.0;
-    const monthHeaderH = 24.0;
-    const dayHeaderH = 38.0;
-    const headerH = monthHeaderH + dayHeaderH;
+    const headerH = 62.0;
+
+    // ── Per-mode column header cell ────────────────────────────────────
+    Widget buildColHeader(DateTime colDate) {
+      switch (widget.viewMode) {
+        case _ViewMode.day:
+          final isToday = colDate.year == today.year &&
+              colDate.month == today.month &&
+              colDate.day == today.day;
+          final isWeekend = colDate.weekday == DateTime.saturday ||
+              colDate.weekday == DateTime.sunday;
+          const dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+          return SizedBox(
+            width: colW,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  dayNames[colDate.weekday - 1],
+                  style: TextStyle(
+                    color: isToday
+                        ? fsdPink
+                        : isWeekend
+                            ? fsdPink.withValues(alpha: isDark ? 0.5 : 0.7)
+                            : isDark
+                                ? fsdTextGrey.withValues(alpha: 0.6)
+                                : const Color(0xFF9CA3AF),
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: isToday
+                      ? BoxDecoration(
+                          color: fsdPink,
+                          borderRadius: BorderRadius.circular(6),
+                        )
+                      : null,
+                  child: Center(
+                    child: Text(
+                      '${colDate.day}',
+                      style: TextStyle(
+                        color: isToday
+                            ? Colors.white
+                            : isWeekend
+                                ? fsdPink.withValues(alpha: isDark ? 0.6 : 0.8)
+                                : isDark
+                                    ? fsdTextGrey
+                                    : const Color(0xFF6B7280),
+                        fontSize: 10,
+                        fontWeight:
+                            isToday ? FontWeight.w800 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+
+        case _ViewMode.week:
+          final weekEnd = colDate.add(const Duration(days: 6));
+          const mNames = [
+            'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+            'jul', 'ago', 'sep', 'oct', 'nov', 'dic'
+          ];
+          final label = weekEnd.month == colDate.month
+              ? '${colDate.day}–${weekEnd.day} ${mNames[colDate.month - 1]}'
+              : '${colDate.day} ${mNames[colDate.month - 1]}–'
+                  '${weekEnd.day} ${mNames[weekEnd.month - 1]}';
+          final containsToday = !todayNorm.isBefore(colDate) &&
+              !todayNorm.isAfter(weekEnd);
+          return SizedBox(
+            width: colW,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: containsToday
+                        ? fsdPink
+                        : isDark
+                            ? fsdTextGrey
+                            : const Color(0xFF6B7280),
+                    fontSize: 9,
+                    fontWeight:
+                        containsToday ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          );
+
+        case _ViewMode.month:
+          const mNames = [
+            'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
+            'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'
+          ];
+          final isCurrent = colDate.year == today.year &&
+              colDate.month == today.month;
+          return SizedBox(
+            width: colW,
+            child: Center(
+              child: Text(
+                mNames[colDate.month - 1],
+                style: TextStyle(
+                  color: isCurrent
+                      ? fsdPink
+                      : isDark
+                          ? fsdTextGrey
+                          : const Color(0xFF6B7280),
+                  fontSize: 11,
+                  fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                ),
+              ),
+            ),
+          );
+      }
+    }
+
+    // ── Top label row (month groups for day / year groups for week+month)
+    Widget buildTopHeader() {
+      if (widget.viewMode == _ViewMode.day) {
+        final groups = _buildMonthGroups(colDates);
+        return Container(
+          height: 24,
+          color: headerBg,
+          child: Row(
+            children: groups
+                .map((mg) => SizedBox(
+                      width: colW * mg.days,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: Text(
+                          mg.label,
+                          style: const TextStyle(
+                            color: fsdPink,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                          ),
+                          overflow: TextOverflow.clip,
+                        ),
+                      ),
+                    ))
+                .toList(),
+          ),
+        );
+      }
+      return Container(
+        height: 24,
+        color: headerBg,
+        child: Row(children: _buildYearGroups(colDates, colW)),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Legend ─────────────────────────────────────────────────────
+        // ── Legend + Hoy button ────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: _StatusLegend(isDark: isDark),
+          child: Row(
+            children: [
+              Expanded(child: _StatusLegend(isDark: isDark)),
+              GestureDetector(
+                onTap: () => _scrollToToday(todayPx),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: fsdPink,
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: fsdPink.withValues(alpha: 0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    'Hoy',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 14),
         // ── Chart ──────────────────────────────────────────────────────
@@ -492,414 +729,191 @@ class _GanttViewState extends State<_GanttView> {
                 ),
                 child: Column(
                   children: [
-                    // ── Fixed header row ────────────────────────────
+                    // ── Fixed header ─────────────────────────────────
                     SizedBox(
                       height: headerH,
-                      child: Row(
-                        children: [
-                          // Left header (fixed)
-                          Container(
-                            width: nameWidth,
-                            height: headerH,
-                            decoration: BoxDecoration(
-                              color: headerBg,
-                              border: Border(
-                                right: BorderSide(color: borderColor, width: 0.5),
-                                bottom: BorderSide(color: borderColor),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Month row area
-                                Container(
-                                  height: monthHeaderH,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    'TAREAS Y ENTREGAS',
-                                    style: TextStyle(
-                                      color: isDark ? fsdTextGrey : const Color(0xFF6B7280),
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.8,
-                                    ),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        controller: _hHeaderCtrl,
+                        physics: const ClampingScrollPhysics(),
+                        child: SizedBox(
+                          width: totalPx,
+                          height: headerH,
+                          child: Column(
+                            children: [
+                              buildTopHeader(),
+                              Expanded(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: headerBg,
+                                    border: Border(
+                                        bottom:
+                                            BorderSide(color: borderColor)),
+                                  ),
+                                  child: Row(
+                                    children: colDates
+                                        .map((d) => buildColHeader(d))
+                                        .toList(),
                                   ),
                                 ),
-                                // Day row area — task count badge
-                                Container(
-                                  height: dayHeaderH,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  alignment: Alignment.centerLeft,
-                                  child: Container(
-                                    width: 22,
-                                    height: 22,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: fsdPink, width: 1.5),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '${tasks.length}',
-                                        style: const TextStyle(
-                                          color: fsdPink,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Right header (scrolls horizontal, synced with body)
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              controller: _hHeaderCtrl,
-                              physics: const ClampingScrollPhysics(),
-                              child: SizedBox(
-                                width: dayWidth * totalDays,
-                                height: headerH,
-                                child: Column(
-                                  children: [
-                                    // Month row
-                                    Container(
-                                      height: monthHeaderH,
-                                      color: headerBg,
-                                      child: Row(
-                                        children: monthGroups.map((mg) => SizedBox(
-                                          width: dayWidth * mg.days,
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(left: 6),
-                                            child: Text(
-                                              mg.label,
-                                              style: const TextStyle(
-                                                color: fsdPink,
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w800,
-                                                letterSpacing: 0.5,
-                                              ),
-                                              overflow: TextOverflow.clip,
-                                            ),
-                                          ),
-                                        )).toList(),
-                                      ),
-                                    ),
-                                    // Day row
-                                    Container(
-                                      height: dayHeaderH,
-                                      decoration: BoxDecoration(
-                                        color: headerBg,
-                                        border: Border(bottom: BorderSide(color: borderColor)),
-                                      ),
-                                      child: Row(
-                                        children: dates.map((d) {
-                                          final isToday = d.year == today.year &&
-                                              d.month == today.month &&
-                                              d.day == today.day;
-                                          final isWeekend = d.weekday == DateTime.saturday ||
-                                              d.weekday == DateTime.sunday;
-                                          final dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-                                          return SizedBox(
-                                            width: dayWidth,
-                                            child: Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  dayNames[d.weekday - 1],
-                                                  style: TextStyle(
-                                                    color: isToday
-                                                        ? fsdPink
-                                                        : isWeekend
-                                                            ? fsdPink.withValues(alpha: isDark ? 0.5 : 0.7)
-                                                            : isDark
-                                                                ? fsdTextGrey.withValues(alpha: 0.6)
-                                                                : const Color(0xFF9CA3AF),
-                                                    fontSize: 8,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Container(
-                                                  width: 22,
-                                                  height: 22,
-                                                  decoration: isToday
-                                                      ? BoxDecoration(
-                                                          color: fsdPink,
-                                                          borderRadius: BorderRadius.circular(6),
-                                                        )
-                                                      : null,
-                                                  child: Center(
-                                                    child: Text(
-                                                      '${d.day}',
-                                                      style: TextStyle(
-                                                        color: isToday
-                                                            ? Colors.white
-                                                            : isWeekend
-                                                                ? fsdPink.withValues(alpha: isDark ? 0.6 : 0.8)
-                                                                : isDark
-                                                                    ? fsdTextGrey
-                                                                    : const Color(0xFF6B7280),
-                                                        fontSize: 10,
-                                                        fontWeight: isToday
-                                                            ? FontWeight.w800
-                                                            : FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        }).toList(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                    // ── Body ────────────────────────────────────────
+                    // ── Body ─────────────────────────────────────────
                     Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Left column — fixed, scrolls vertical only
-                          SizedBox(
-                            width: nameWidth,
-                            child: SingleChildScrollView(
-                              controller: _vLeftCtrl,
-                              physics: const ClampingScrollPhysics(),
-                              child: Column(
-                                children: tasks.asMap().entries.map((entry) {
-                                  final i = entry.key;
-                                  final task = entry.value;
-                                  final isLast = i == tasks.length - 1;
-                                  return GestureDetector(
-                                    onTap: () => _showDetail(context, task),
-                                    child: Container(
-                                      width: nameWidth,
-                                      height: rowHeight,
-                                      decoration: BoxDecoration(
-                                        color: nameBg,
-                                        border: Border(
-                                          right: BorderSide(color: borderColor, width: 0.5),
-                                          bottom: isLast
-                                              ? BorderSide.none
-                                              : BorderSide(color: borderColor, width: 0.5),
-                                        ),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 8,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 3,
-                                            height: 30,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        controller: _hBodyCtrl,
+                        physics: const ClampingScrollPhysics(),
+                        child: SizedBox(
+                          width: totalPx,
+                          child: SingleChildScrollView(
+                            controller: _vBodyCtrl,
+                            physics: const ClampingScrollPhysics(),
+                            child: Column(
+                              children: tasks.asMap().entries.map((entry) {
+                                final i = entry.key;
+                                final task = entry.value;
+                                final isLast = i == tasks.length - 1;
+
+                                final start = DateTime(
+                                  task.startDate!.year,
+                                  task.startDate!.month,
+                                  task.startDate!.day,
+                                );
+                                final endInclusive = DateTime(
+                                  task.endDate!.year,
+                                  task.endDate!.month,
+                                  task.endDate!.day,
+                                );
+                                final endExclusive =
+                                    endInclusive.add(const Duration(days: 1));
+
+                                final barLeft = _dateToPixel(
+                                        start, minDate, widget.viewMode, colW)
+                                    .clamp(0.0, totalPx);
+                                final barRight = _dateToPixel(endExclusive,
+                                        minDate, widget.viewMode, colW)
+                                    .clamp(0.0, totalPx);
+                                final barWidth =
+                                    (barRight - barLeft).clamp(colW * 0.3, totalPx);
+
+                                final taskColor = task.taskColor;
+                                final rowBg = isDark
+                                    ? (i.isEven
+                                        ? fsdCardBg
+                                        : const Color(0xFF262830))
+                                    : (i.isEven
+                                        ? Colors.white
+                                        : const Color(0xFFFAFAFC));
+
+                                return GestureDetector(
+                                  onTap: () => _showDetail(context, task),
+                                  child: SizedBox(
+                                    width: totalPx,
+                                    height: rowHeight,
+                                    child: Stack(
+                                      clipBehavior: Clip.hardEdge,
+                                      children: [
+                                        // Row background
+                                        Positioned.fill(
+                                          child: Container(
                                             decoration: BoxDecoration(
-                                              color: task.priorityColor,
-                                              borderRadius: BorderRadius.circular(2),
+                                              color: rowBg,
+                                              border: isLast
+                                                  ? null
+                                                  : Border(
+                                                      bottom: BorderSide(
+                                                        color: borderColor,
+                                                        width: 0.5,
+                                                      ),
+                                                    ),
                                             ),
                                           ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  task.title,
-                                                  style: TextStyle(
-                                                    color: titleColor,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w600,
-                                                    height: 1.2,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 3),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(
-                                                    horizontal: 5,
-                                                    vertical: 1,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: task.statusColor.withValues(alpha: 0.15),
-                                                    borderRadius: BorderRadius.circular(4),
-                                                  ),
-                                                  child: Text(
-                                                    task.statusLabel,
-                                                    style: TextStyle(
-                                                      color: task.statusColor,
-                                                      fontSize: 9,
-                                                      fontWeight: FontWeight.w700,
-                                                    ),
-                                                  ),
+                                        ),
+                                        // Weekend shading (day mode only)
+                                        if (widget.viewMode == _ViewMode.day)
+                                          ...colDates.asMap().entries.map((e) {
+                                            final d = e.value;
+                                            final isWe =
+                                                d.weekday == DateTime.saturday ||
+                                                d.weekday == DateTime.sunday;
+                                            if (!isWe) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return Positioned(
+                                              left: colW * e.key,
+                                              top: 0,
+                                              bottom: 0,
+                                              width: colW,
+                                              child: Container(
+                                                color: isDark
+                                                    ? Colors.white
+                                                        .withValues(alpha: 0.03)
+                                                    : Colors.black
+                                                        .withValues(alpha: 0.02),
+                                              ),
+                                            );
+                                          }),
+                                        // Today indicator
+                                        if (todayPx >= 0 && todayPx <= totalPx)
+                                          Positioned(
+                                            left: todayPx + colW / 2 - 0.5,
+                                            top: 0,
+                                            bottom: 0,
+                                            width: 1,
+                                            child: Container(
+                                              color: fsdPink
+                                                  .withValues(alpha: 0.35),
+                                            ),
+                                          ),
+                                        // Task bar
+                                        Positioned(
+                                          left: barLeft,
+                                          top: (rowHeight - barHeight) / 2,
+                                          child: Container(
+                                            width: barWidth,
+                                            height: barHeight,
+                                            decoration: BoxDecoration(
+                                              color: taskColor
+                                                  .withValues(alpha: 0.88),
+                                              borderRadius:
+                                                  BorderRadius.circular(7),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: taskColor
+                                                      .withValues(alpha: 0.28),
+                                                  blurRadius: 5,
+                                                  offset: const Offset(0, 2),
                                                 ),
                                               ],
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ),
-                          // Right timeline — scrolls horizontal + vertical (synced)
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              controller: _hBodyCtrl,
-                              physics: const ClampingScrollPhysics(),
-                              child: SizedBox(
-                                width: dayWidth * totalDays,
-                                child: SingleChildScrollView(
-                                  controller: _vBodyCtrl,
-                                  physics: const ClampingScrollPhysics(),
-                                  child: Column(
-                                    children: tasks.asMap().entries.map((entry) {
-                                      final i = entry.key;
-                                      final task = entry.value;
-                                      final isLast = i == tasks.length - 1;
-
-                                      final start = DateTime(
-                                        task.startDate!.year,
-                                        task.startDate!.month,
-                                        task.startDate!.day,
-                                      );
-                                      final end = DateTime(
-                                        task.endDate!.year,
-                                        task.endDate!.month,
-                                        task.endDate!.day,
-                                      );
-                                      final startOffset = start
-                                          .difference(minDate)
-                                          .inDays
-                                          .clamp(0, totalDays);
-                                      final endOffset = end
-                                          .difference(minDate)
-                                          .inDays
-                                          .clamp(0, totalDays - 1);
-                                      final barDays =
-                                          (endOffset - startOffset + 1).clamp(1, totalDays);
-                                      final barLeft = dayWidth * startOffset;
-                                      final barWidth = (dayWidth * barDays).clamp(
-                                        dayWidth * 0.5,
-                                        dayWidth * totalDays.toDouble(),
-                                      );
-                                      final taskColor = task.taskColor;
-                                      final rowBg = isDark
-                                          ? (i.isEven ? fsdCardBg : const Color(0xFF262830))
-                                          : (i.isEven ? Colors.white : const Color(0xFFFAFAFC));
-
-                                      return GestureDetector(
-                                        onTap: () => _showDetail(context, task),
-                                        child: SizedBox(
-                                          width: dayWidth * totalDays,
-                                          height: rowHeight,
-                                          child: Stack(
-                                            clipBehavior: Clip.hardEdge,
-                                            children: [
-                                              // Row background
-                                              Positioned.fill(
-                                                child: Container(
-                                                  decoration: BoxDecoration(
-                                                    color: rowBg,
-                                                    border: isLast
-                                                        ? null
-                                                        : Border(
-                                                            bottom: BorderSide(
-                                                              color: borderColor,
-                                                              width: 0.5,
-                                                            ),
-                                                          ),
-                                                  ),
-                                                ),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 7),
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              task.title,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
                                               ),
-                                              // Weekend shading
-                                              ...List.generate(totalDays, (di) {
-                                                final d = minDate.add(Duration(days: di));
-                                                final isWe =
-                                                    d.weekday == DateTime.saturday ||
-                                                    d.weekday == DateTime.sunday;
-                                                if (!isWe) return const SizedBox.shrink();
-                                                return Positioned(
-                                                  left: dayWidth * di,
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  width: dayWidth,
-                                                  child: Container(
-                                                    color: isDark
-                                                        ? Colors.white.withValues(alpha: 0.03)
-                                                        : Colors.black.withValues(alpha: 0.02),
-                                                  ),
-                                                );
-                                              }),
-                                              // Today line
-                                              if (todayOffset >= 0 && todayOffset < totalDays)
-                                                Positioned(
-                                                  left: dayWidth * todayOffset +
-                                                      dayWidth / 2 - 0.5,
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  width: 1,
-                                                  child: Container(
-                                                    color: fsdPink.withValues(alpha: 0.35),
-                                                  ),
-                                                ),
-                                              // Task bar
-                                              Positioned(
-                                                left: barLeft,
-                                                top: (rowHeight - barHeight) / 2,
-                                                child: Container(
-                                                  width: barWidth,
-                                                  height: barHeight,
-                                                  decoration: BoxDecoration(
-                                                    color: taskColor.withValues(alpha: 0.88),
-                                                    borderRadius: BorderRadius.circular(7),
-                                                    boxShadow: [
-                                                      BoxShadow(
-                                                        color: taskColor.withValues(alpha: 0.28),
-                                                        blurRadius: 5,
-                                                        offset: const Offset(0, 2),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 7),
-                                                  alignment: Alignment.centerLeft,
-                                                  child: Text(
-                                                    task.title,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 10,
-                                                      fontWeight: FontWeight.w700,
-                                                    ),
-                                                    overflow: TextOverflow.ellipsis,
-                                                    maxLines: 1,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
                                           ),
                                         ),
-                                      );
-                                    }).toList(),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ),
+                                );
+                              }).toList(),
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ],
@@ -947,6 +961,41 @@ class _GanttViewState extends State<_GanttView> {
       'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC',
     ];
     return '${m[month - 1]} $year';
+  }
+
+  List<Widget> _buildYearGroups(List<DateTime> colDates, double colW) {
+    if (colDates.isEmpty) return [];
+    final groups = <MapEntry<int, int>>[];
+    var curYear = colDates.first.year;
+    var count = 0;
+    for (final d in colDates) {
+      if (d.year == curYear) {
+        count++;
+      } else {
+        groups.add(MapEntry(curYear, count));
+        curYear = d.year;
+        count = 1;
+      }
+    }
+    groups.add(MapEntry(curYear, count));
+    return groups
+        .map((g) => SizedBox(
+              width: colW * g.value,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Text(
+                  '${g.key}',
+                  style: const TextStyle(
+                    color: fsdPink,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                  overflow: TextOverflow.clip,
+                ),
+              ),
+            ))
+        .toList();
   }
 }
 
@@ -1714,6 +1763,272 @@ class _DateCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Tasks list panel ─────────────────────────────────────────────────────────
+
+class _TasksListPanel extends StatelessWidget {
+  final List<Task> tasks;
+  final bool isDark;
+
+  const _TasksListPanel({required this.tasks, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
+    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
+
+    final completed = tasks.where((t) {
+      final s = t.status.toLowerCase();
+      return s == 'completed' || s == 'done';
+    }).length;
+    final inProgress = tasks.where((t) {
+      final s = t.status.toLowerCase();
+      return s == 'in_progress' || s == 'doing';
+    }).length;
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: borderColor, width: 1.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header ────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+            child: Row(
+              children: [
+                Text(
+                  'Tareas',
+                  style: TextStyle(
+                    color: titleColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: fsdPink.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: fsdPink.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    '${tasks.length}',
+                    style: const TextStyle(
+                      color: fsdPink,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                if (completed > 0) ...[
+                  _MiniStat(
+                    label: '$completed completada${completed == 1 ? '' : 's'}',
+                    color: const Color(0xFF1BC47D),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                if (inProgress > 0)
+                  _MiniStat(
+                    label: '$inProgress en progreso',
+                    color: const Color(0xFF55A6FF),
+                  ),
+              ],
+            ),
+          ),
+          Container(height: 0.5, color: borderColor),
+          // ── List ──────────────────────────────────────────────────────
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              itemCount: tasks.length,
+              itemBuilder: (ctx, i) => _TaskListCard(
+                task: tasks[i],
+                isDark: isDark,
+                onTap: () => showModalBottomSheet(
+                  context: ctx,
+                  backgroundColor: Colors.transparent,
+                  isScrollControlled: true,
+                  builder: (_) => _TaskDetailSheet(task: tasks[i], isDark: isDark),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Mini stat chip ───────────────────────────────────────────────────────────
+
+class _MiniStat extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _MiniStat({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Task list card ───────────────────────────────────────────────────────────
+
+class _TaskListCard extends StatelessWidget {
+  final Task task;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _TaskListCard({
+    required this.task,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  String _fmtDate(DateTime? d) {
+    if (d == null) return '-';
+    const m = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
+                'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return '${d.day} ${m[d.month - 1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
+    final cardBg = isDark ? const Color(0xFF1E2130) : Colors.white;
+    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
+    final subColor = isDark ? fsdTextGrey : const Color(0xFF6B7280);
+
+    final duration = task.startDate != null && task.endDate != null
+        ? task.endDate!.difference(task.startDate!).inDays + 1
+        : null;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor),
+        ),
+        child: Row(
+          children: [
+            // Priority color accent
+            Container(
+              width: 3,
+              height: 36,
+              decoration: BoxDecoration(
+                color: task.priorityColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Content
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          task.title,
+                          style: TextStyle(
+                            color: titleColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: task.statusColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          task.statusLabel,
+                          style: TextStyle(
+                            color: task.statusColor,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      Icon(Icons.calendar_today_outlined,
+                          size: 10, color: subColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_fmtDate(task.startDate)} → ${_fmtDate(task.endDate)}',
+                        style: TextStyle(color: subColor, fontSize: 11),
+                      ),
+                      if (duration != null) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          '· $duration días',
+                          style: TextStyle(color: subColor, fontSize: 11),
+                        ),
+                      ],
+                      if (task.assigneeName.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Icon(Icons.person_outline_rounded,
+                            size: 10, color: subColor),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            task.assigneeName,
+                            style: TextStyle(color: subColor, fontSize: 11),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, color: subColor, size: 18),
+          ],
+        ),
       ),
     );
   }

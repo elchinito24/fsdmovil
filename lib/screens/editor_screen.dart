@@ -7,9 +7,6 @@ import 'package:fsdmovil/services/srs_realtime_service.dart';
 import 'package:fsdmovil/services/srs_word_service.dart';
 
 const _pink = Color(0xFFE8365D);
-const _cardBg = Color(0xFF252838);
-const _fieldBg = Color(0xFF252838);
-const _borderColor = Color(0xFF2A2D3A);
 const _textGrey = Color(0xFF8E8E93);
 
 class EditorScreen extends StatefulWidget {
@@ -636,11 +633,11 @@ class _EditorScreenState extends State<EditorScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: _cardBg,
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: const Text(
+        title: Text(
           'Enviar a revisión',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface, fontWeight: FontWeight.w800),
         ),
         content: const Text(
           'Tus cambios se guardarán como una versión nueva y el dueño del proyecto podrá aceptarlos o rechazarlos. ¿Continuar?',
@@ -768,10 +765,10 @@ class _EditorScreenState extends State<EditorScreen> {
     } else if (_isOwner) {
       color = Theme.of(context).colorScheme.onSurface;
       label = 'Guardar';
-      iconWidget = const Icon(
+      iconWidget = Icon(
         Icons.save_outlined,
         size: 16,
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.onSurface,
       );
     } else {
       color = _pink;
@@ -818,7 +815,7 @@ class _EditorScreenState extends State<EditorScreen> {
             title: Text(
               'Conflicto detectado',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(ctx).colorScheme.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -868,15 +865,15 @@ class _EditorScreenState extends State<EditorScreen> {
     hintText: hint,
     hintStyle: const TextStyle(color: _textGrey),
     filled: true,
-    fillColor: _fieldBg,
+    fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
-      borderSide: const BorderSide(color: _borderColor),
+      borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
-      borderSide: const BorderSide(color: _borderColor),
+      borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
@@ -933,7 +930,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   hint.isEmpty ? 'Seleccionar...' : hint,
                   style: const TextStyle(color: _textGrey),
                 ),
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
                 items: options
                     .map(
                       (opt) => DropdownMenuItem<String>(
@@ -1070,7 +1067,7 @@ class _EditorScreenState extends State<EditorScreen> {
             title: Text(
               'Confirmar eliminación',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(dCtx).colorScheme.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -1462,7 +1459,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         child: TextField(
                           controller: draftCtrl,
                           autofocus: true,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                           decoration: _dec('$itemLabel nuevo'),
                         ),
                       ),
@@ -1477,9 +1474,9 @@ class _EditorScreenState extends State<EditorScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: _fieldBg,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _borderColor),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
                           child: const Icon(
                             Icons.close_rounded,
@@ -1744,8 +1741,8 @@ class _EditorScreenState extends State<EditorScreen> {
             Expanded(
               child: Text(
                 subTitle,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
@@ -2081,9 +2078,9 @@ class _EditorScreenState extends State<EditorScreen> {
                   vertical: 14,
                 ),
                 decoration: BoxDecoration(
-                  color: _fieldBg,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _borderColor),
+                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                 ),
                 child: Row(
                   children: [
@@ -2182,9 +2179,9 @@ class _EditorScreenState extends State<EditorScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: _fieldBg,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _borderColor),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           ),
           child: Row(
             children: [
@@ -2250,7 +2247,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   child: Text(
                     errorMessage!,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                   ),
                 ),
               )
@@ -2258,16 +2255,16 @@ class _EditorScreenState extends State<EditorScreen> {
                 children: [
                   Container(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                    decoration: const BoxDecoration(
-                      border: Border(bottom: BorderSide(color: _borderColor)),
+                    decoration: BoxDecoration(
+                      border: Border(bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
                     ),
                     child: Row(
                       children: [
                         IconButton(
                           onPressed: () => context.pop(),
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.arrow_back_ios_new_rounded,
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.onSurface,
                             size: 20,
                           ),
                           padding: EdgeInsets.zero,
@@ -2275,14 +2272,14 @@ class _EditorScreenState extends State<EditorScreen> {
                         ),
                         const Spacer(),
                         PopupMenuButton<String>(
-                          color: _cardBg,
+                          color: Theme.of(context).colorScheme.surface,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
-                            side: const BorderSide(color: _borderColor),
+                            side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                           ),
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.more_vert_rounded,
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                           onSelected: (value) {
                             if (value == 'preview') {
@@ -2292,19 +2289,19 @@ class _EditorScreenState extends State<EditorScreen> {
                             }
                           },
                           itemBuilder: (_) => [
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'preview',
                               child: Row(
                                 children: [
                                   Icon(
                                     Icons.visibility_outlined,
-                                    color: Colors.white,
+                                    color: Theme.of(context).colorScheme.onSurface,
                                     size: 18,
                                   ),
-                                  SizedBox(width: 10),
+                                  const SizedBox(width: 10),
                                   Text(
                                     'Vista previa',
-                                    style: TextStyle(color: Colors.white),
+                                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                                   ),
                                 ],
                               ),
@@ -2323,9 +2320,9 @@ class _EditorScreenState extends State<EditorScreen> {
                                             color: _pink,
                                           ),
                                         )
-                                      : const Icon(
+                                      : Icon(
                                           Icons.download_outlined,
-                                          color: Colors.white,
+                                          color: Theme.of(context).colorScheme.onSurface,
                                           size: 18,
                                         ),
                                   const SizedBox(width: 10),
@@ -2333,7 +2330,7 @@ class _EditorScreenState extends State<EditorScreen> {
                                     _downloading
                                         ? 'Generando...'
                                         : 'Descargar DOCX',
-                                    style: const TextStyle(color: Colors.white),
+                                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                                   ),
                                 ],
                               ),
@@ -2346,8 +2343,8 @@ class _EditorScreenState extends State<EditorScreen> {
                   // ── Secondary controls bar ───────────────────────────
                   Container(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                    decoration: const BoxDecoration(
-                      border: Border(bottom: BorderSide(color: _borderColor)),
+                    decoration: BoxDecoration(
+                      border: Border(bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
                     ),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -2433,9 +2430,9 @@ class _EditorScreenState extends State<EditorScreen> {
                               children: [
                                 Container(
                                   decoration: BoxDecoration(
-                                    color: _cardBg,
+                                    color: Theme.of(context).colorScheme.surface,
                                     borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: _borderColor),
+                                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                                   ),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,
@@ -2447,10 +2444,10 @@ class _EditorScreenState extends State<EditorScreen> {
                                           ? _selectedSectionId
                                           : null,
                                       isExpanded: true,
-                                      dropdownColor: _cardBg,
+                                      dropdownColor: Theme.of(context).colorScheme.surface,
                                       iconEnabledColor: _textGrey,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurface,
                                         fontSize: 14,
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -2476,9 +2473,9 @@ class _EditorScreenState extends State<EditorScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(18),
                                   decoration: BoxDecoration(
-                                    color: _cardBg,
+                                    color: Theme.of(context).colorScheme.surface,
                                     borderRadius: BorderRadius.circular(22),
-                                    border: Border.all(color: _borderColor),
+                                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                                   ),
                                   child: _buildSectionContent(),
                                 ),
@@ -2604,16 +2601,16 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
     hintText: hint,
     hintStyle: const TextStyle(color: _textGrey, fontSize: 13),
     filled: true,
-    fillColor: _cardBg,
+    fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
     isDense: true,
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: _borderColor),
+      borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: const BorderSide(color: _borderColor),
+      borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
@@ -2732,8 +2729,8 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                           'Seleccionar...',
                           style: TextStyle(color: _textGrey),
                         ),
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 13,
                         ),
                         items: options
@@ -2767,7 +2764,7 @@ class _ObjectArrayItemCardState extends State<_ObjectArrayItemCard> {
                     controller: _ctrl[fid],
                     focusNode: _focusNodes[fid],
                     maxLines: maxLines,
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13),
                     decoration: _dec(hint.isEmpty ? label : hint),
                   ),
                 ),
@@ -2879,7 +2876,7 @@ class _EditorModeTab extends StatelessWidget {
         decoration: BoxDecoration(
           color: active ? _pink : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: active ? _pink : _borderColor),
+          border: Border.all(color: active ? _pink : Theme.of(context).colorScheme.outlineVariant),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -3203,9 +3200,9 @@ class _RealtimeStatusCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: _cardBg,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3347,14 +3344,14 @@ class _RealtimeStatusCard extends StatelessWidget {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF151823),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: _borderColor),
+                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                   ),
                   child: Text(
                     user.name,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 12.8,
                       fontWeight: FontWeight.w700,
                     ),
