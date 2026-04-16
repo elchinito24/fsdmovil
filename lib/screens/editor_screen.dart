@@ -2232,6 +2232,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final connectedUsers = _connectedUsers.values.toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     final sections = _sections;
+    const newSectionValue = '_add_new_section';
 
     final cs = Theme.of(context).colorScheme;
 
@@ -2440,7 +2441,7 @@ class _EditorScreenState extends State<EditorScreen> {
                                   ),
                                   child: DropdownButtonHideUnderline(
                                     child: DropdownButton<String>(
-                                      value: _selectedSectionId.isNotEmpty
+                                      value: _selectedSectionId.isNotEmpty && _selectedSectionId != newSectionValue
                                           ? _selectedSectionId
                                           : null,
                                       isExpanded: true,
@@ -2451,19 +2452,29 @@ class _EditorScreenState extends State<EditorScreen> {
                                         fontSize: 14,
                                         fontWeight: FontWeight.w700,
                                       ),
-                                      items: sections
-                                          .map(
-                                            (s) => DropdownMenuItem<String>(
-                                              value: s['value'],
-                                              child: Text(s['label']!),
-                                            ),
-                                          )
-                                          .toList(),
+                                      items: [
+                                        ...sections.map(
+                                          (s) => DropdownMenuItem<String>(
+                                            value: s['value'],
+                                            child: Text(s['label']!),
+                                          ),
+                                        ),
+                                        const DropdownMenuItem<String>(
+                                          value: newSectionValue,
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.add_rounded, color: _pink, size: 18),
+                                              SizedBox(width: 8),
+                                              Text('Nueva sección', style: TextStyle(color: _pink)),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                       onChanged: (val) {
-                                        if (val != null) {
-                                          setState(
-                                            () => _selectedSectionId = val,
-                                          );
+                                        if (val == newSectionValue) {
+                                          _showAddSectionDialog();
+                                        } else if (val != null) {
+                                          setState(() => _selectedSectionId = val);
                                         }
                                       },
                                     ),

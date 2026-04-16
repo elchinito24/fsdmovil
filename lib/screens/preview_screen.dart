@@ -32,6 +32,166 @@ class PreviewScreen extends StatefulWidget {
 }
 
 class _PreviewScreenState extends State<PreviewScreen> {
+    // Divide widgets en páginas, fragmentando textos largos y listas para evitar cortes
+    List<List<Widget>> paginateWidgets(List<Widget> widgets, {double maxHeight = 1123.0}) {
+      List<List<Widget>> pages = [];
+      List<Widget> current = [];
+      double currentHeight = 0;
+
+      double estimateHeight(Widget w) {
+        if (w is SizedBox && w.height != null) return w.height!;
+        if (w is Padding && w.child != null) return estimateHeight(w.child!);
+        if (w is Container && w.constraints != null && w.constraints!.hasBoundedHeight) return w.constraints!.maxHeight;
+        if (w is Text) {
+          final text = (w as Text).data ?? '';
+          final lines = (text.length / 60).ceil();
+          return 24.0 * lines + 8.0;
+        }
+        if (w is Column) return (w.children.length * 40).toDouble();
+        if (w is Row) return 40;
+        return 48;
+      }
+
+      // Fragmenta un widget de texto largo en varios widgets si es necesario
+      List<Widget> splitTextWidget(Text w, double availableHeight) {
+        final text = w.data ?? '';
+        final style = w.style ?? const TextStyle(fontSize: 13, height: 1.75);
+        final maxLinesPerPage = (availableHeight / 24.0).floor();
+        final words = text.split(' ');
+        List<String> lines = [];
+        String currentLine = '';
+        for (final word in words) {
+          if ((currentLine + ' ' + word).length > 60) {
+            lines.add(currentLine.trim());
+            currentLine = word;
+          } else {
+            currentLine += ' ' + word;
+          }
+        }
+        if (currentLine.isNotEmpty) lines.add(currentLine.trim());
+        List<Widget> result = [];
+        for (int i = 0; i < lines.length; i += maxLinesPerPage) {
+          final chunk = lines.sublist(i, (i + maxLinesPerPage).clamp(0, lines.length));
+          result.add(Text(chunk.join('\n'), style: style));
+        }
+        return result;
+      }
+
+      // Fragmenta Columnas/Listas
+      List<Widget> splitColumnWidget(Column col, double availableHeight) {
+        List<Widget> result = [];
+        List<Widget> buffer = [];
+        double bufferHeight = 0;
+        for (final child in col.children) {
+          final h = estimateHeight(child);
+          if (bufferHeight + h > availableHeight && buffer.isNotEmpty) {
+            result.add(Column(crossAxisAlignment: col.crossAxisAlignment, children: buffer));
+            buffer = [];
+            bufferHeight = 0;
+          }
+          buffer.add(child);
+          bufferHeight += h;
+        }
+        if (buffer.isNotEmpty) {
+          result.add(Column(crossAxisAlignment: col.crossAxisAlignment, children: buffer));
+        }
+        return result;
+      }
+
+      // Fragmenta tablas (Column con filas)
+      List<Widget> splitTableWidget(Column col, double availableHeight) {
+        // Si la columna parece tabla (todas filas tipo Row o IntrinsicHeight)
+        if (col.children.isEmpty) return [col];
+        final isTable = col.children.every((w) => w is Row || w is IntrinsicHeight);
+        if (!isTable) return splitColumnWidget(col, availableHeight);
+        List<Widget> result = [];
+        List<Widget> buffer = [];
+        double bufferHeight = 0;
+        for (final child in col.children) {
+          final h = estimateHeight(child);
+          if (bufferHeight + h > availableHeight && buffer.isNotEmpty) {
+            result.add(Column(children: buffer));
+            buffer = [];
+            bufferHeight = 0;
+          }
+          buffer.add(child);
+          bufferHeight += h;
+        }
+        if (buffer.isNotEmpty) result.add(Column(children: buffer));
+        return result;
+      }
+
+      int i = 0;
+      while (i < widgets.length) {
+        final w = widgets[i];
+        double h = estimateHeight(w);
+        // Si el widget cabe, lo agregamos
+        if (currentHeight + h <= maxHeight) {
+          current.add(w);
+          currentHeight += h;
+          i++;
+        } else {
+          // Si es Text largo, fragmentar
+          if (w is Text) {
+            final available = maxHeight - currentHeight;
+            final parts = splitTextWidget(w, available > 80 ? available : maxHeight);
+            if (parts.isNotEmpty) {
+              // El primer fragmento cabe en la página actual
+              if (currentHeight + estimateHeight(parts[0]) <= maxHeight) {
+                current.add(parts[0]);
+                currentHeight += estimateHeight(parts[0]);
+                // El resto va en siguientes páginas
+                for (var j = 1; j < parts.length; j++) {
+                  pages.add(current);
+                  current = [parts[j]];
+                  currentHeight = estimateHeight(parts[j]);
+                }
+                i++;
+                continue;
+              }
+            }
+          }
+          // Si es Column (lista o tabla), fragmentar
+          if (w is Column) {
+            final available = maxHeight - currentHeight;
+            final isTable = w.children.isNotEmpty && (w.children.every((c) => c is Row || c is IntrinsicHeight));
+            final parts = isTable
+                ? splitTableWidget(w, available > 80 ? available : maxHeight)
+                : splitColumnWidget(w, available > 80 ? available : maxHeight);
+            if (parts.isNotEmpty) {
+              // El primer fragmento cabe en la página actual
+              if (currentHeight + estimateHeight(parts[0]) <= maxHeight) {
+                current.add(parts[0]);
+                currentHeight += estimateHeight(parts[0]);
+                // El resto va en siguientes páginas
+                for (var j = 1; j < parts.length; j++) {
+                  pages.add(current);
+                  current = [parts[j]];
+                  currentHeight = estimateHeight(parts[j]);
+                }
+                i++;
+                continue;
+              }
+            }
+          }
+          // Si no cabe, forzar salto de página
+          if (current.isNotEmpty) {
+            pages.add(current);
+            current = [];
+            currentHeight = 0;
+          } else {
+            // Si ni siquiera cabe solo, lo agregamos y forzamos salto
+            current.add(w);
+            pages.add(current);
+            current = [];
+            currentHeight = 0;
+            i++;
+          }
+        }
+      }
+      if (current.isNotEmpty) pages.add(current);
+      return pages;
+    }
   bool loading = true;
   bool _generatingWord = false;
   bool _generatingPdf  = false;
@@ -533,86 +693,172 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
   Widget _vDiv() => Container(width: 0.6, color: _docBorder);
 
-  Widget _docFunctionalReqTable(List items) {
+  // Pagina la tabla de requisitos funcionales, repitiendo encabezado en cada página
+  List<Widget> _paginatedFunctionalReqTable(List items, {double maxHeight = 900}) {
     if (items.isEmpty) {
-      return _docP('Sin requisitos funcionales registrados');
+      return [_docP('Sin requisitos funcionales registrados')];
     }
-    return Container(
-      decoration:
-          BoxDecoration(border: Border.all(color: _docBorder, width: 0.8)),
-      child: Column(
-        children: [
-          IntrinsicHeight(
-            child: Row(children: [
-              _reqHeaderCell('ID', flex: 2),
+    // Encabezado de la tabla
+    Widget tableHeader() => IntrinsicHeight(
+      child: Row(children: [
+        _reqHeaderCell('ID', flex: 2),
+        _vDiv(),
+        _reqHeaderCell('TÍTULO', flex: 4),
+        _vDiv(),
+        _reqHeaderCell('PRIORIDAD', flex: 3),
+        _vDiv(),
+        _reqHeaderCell('DESCRIPCIÓN', flex: 6),
+      ]),
+    );
+    // Calcula la altura estimada de una fila
+    double rowHeight(Map<String, dynamic> item) {
+      final desc = safeText(item['description'], fallback: '');
+      final descLines = (desc.length / 60).ceil();
+      return 48.0 + (descLines > 1 ? (descLines - 1) * 18.0 : 0);
+    }
+    // Genera la fila
+    Widget buildRow(Map<String, dynamic> item, int idx) {
+      final priority = (item['priority'] ?? '').toString().trim();
+      final pc = _priorityColor(priority);
+      return Container(
+        decoration: BoxDecoration(
+          color: idx.isEven ? Colors.white : const Color(0xFFF8FAFF),
+          border: const Border(
+              top: BorderSide(color: _docBorder, width: 0.6)),
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _reqIdCell(safeText(item['id'], fallback: '-')),
               _vDiv(),
-              _reqHeaderCell('TÍTULO', flex: 4),
+              _reqBoldCell(safeText(item['title'], fallback: ''), flex: 4),
               _vDiv(),
-              _reqHeaderCell('PRIORIDAD', flex: 3),
-              _vDiv(),
-              _reqHeaderCell('DESCRIPCIÓN', flex: 6),
-            ]),
-          ),
-          ...items.asMap().entries.map((e) {
-            final idx = e.key;
-            final item = Map<String, dynamic>.from(e.value);
-            final priority =
-                (item['priority'] ?? '').toString().trim();
-            final pc = _priorityColor(priority);
-            return Container(
-              decoration: BoxDecoration(
-                color: idx.isEven ? Colors.white : const Color(0xFFF8FAFF),
-                border: const Border(
-                    top: BorderSide(color: _docBorder, width: 0.6)),
-              ),
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _reqIdCell(safeText(item['id'], fallback: '-')),
-                    _vDiv(),
-                    _reqBoldCell(
-                        safeText(item['title'], fallback: ''),
-                        flex: 4),
-                    _vDiv(),
-                    Expanded(
-                      flex: 3,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 7),
-                        child: priority.isEmpty
-                            ? const SizedBox()
-                            : Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: _priorityBg(priority),
-                                  borderRadius:
-                                      BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  _priorityLabel(priority),
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: pc,
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ),
-                    _vDiv(),
-                    _reqDataCell(
-                        safeText(item['description'], fallback: ''),
-                        flex: 6),
-                  ],
+              Expanded(
+                flex: 3,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                  child: priority.isEmpty
+                      ? const SizedBox()
+                      : Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _priorityBg(priority),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            _priorityLabel(priority),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: pc,
+                            ),
+                          ),
+                        ),
                 ),
               ),
-            );
-          }),
-        ],
-      ),
+              _vDiv(),
+              _reqDataCell(safeText(item['description'], fallback: ''), flex: 6),
+            ],
+          ),
+        ),
+      );
+    }
+    // Paginación de filas
+    List<Widget> pages = [];
+    List<Widget> buffer = [tableHeader()];
+    double bufferHeight = 56; // header
+    for (int i = 0; i < items.length; i++) {
+      final item = Map<String, dynamic>.from(items[i]);
+      final h = rowHeight(item);
+      if (bufferHeight + h > maxHeight && buffer.length > 1) {
+        pages.add(Container(
+          decoration: BoxDecoration(border: Border.all(color: _docBorder, width: 0.8)),
+          child: Column(children: buffer),
+        ));
+        buffer = [tableHeader()];
+        bufferHeight = 56;
+      }
+      buffer.add(buildRow(item, i));
+      bufferHeight += h;
+    }
+    if (buffer.length > 1) {
+      pages.add(Container(
+        decoration: BoxDecoration(border: Border.all(color: _docBorder, width: 0.8)),
+        child: Column(children: buffer),
+      ));
+    }
+    return pages;
+  }
+
+  // Igual para requisitos no funcionales
+  List<Widget> _paginatedNonFunctionalReqTable(List items, {double maxHeight = 900}) {
+    if (items.isEmpty) {
+      return [_docP('Sin requisitos no funcionales registrados')];
+    }
+    Widget tableHeader() => IntrinsicHeight(
+      child: Row(children: [
+        _reqHeaderCell('ID', flex: 2),
+        _vDiv(),
+        _reqHeaderCell('TÍTULO', flex: 4),
+        _vDiv(),
+        _reqHeaderCell('CATEGORÍA', flex: 3),
+        _vDiv(),
+        _reqHeaderCell('DESCRIPCIÓN', flex: 6),
+      ]),
     );
+    double rowHeight(Map<String, dynamic> item) {
+      final desc = safeText(item['description'], fallback: '');
+      final descLines = (desc.length / 60).ceil();
+      return 48.0 + (descLines > 1 ? (descLines - 1) * 18.0 : 0);
+    }
+    Widget buildRow(Map<String, dynamic> item, int idx) {
+      return Container(
+        decoration: BoxDecoration(
+          color: idx.isEven ? Colors.white : const Color(0xFFF8FAFF),
+          border: const Border(
+              top: BorderSide(color: _docBorder, width: 0.6)),
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _reqIdCell(safeText(item['id'], fallback: '-')),
+              _vDiv(),
+              _reqBoldCell(safeText(item['title'], fallback: ''), flex: 4),
+              _vDiv(),
+              _reqDataCell(_categoryLabel(safeText(item['category'], fallback: '')), flex: 3),
+              _vDiv(),
+              _reqDataCell(safeText(item['description'], fallback: ''), flex: 6),
+            ],
+          ),
+        ),
+      );
+    }
+    List<Widget> pages = [];
+    List<Widget> buffer = [tableHeader()];
+    double bufferHeight = 56;
+    for (int i = 0; i < items.length; i++) {
+      final item = Map<String, dynamic>.from(items[i]);
+      final h = rowHeight(item);
+      if (bufferHeight + h > maxHeight && buffer.length > 1) {
+        pages.add(Container(
+          decoration: BoxDecoration(border: Border.all(color: _docBorder, width: 0.8)),
+          child: Column(children: buffer),
+        ));
+        buffer = [tableHeader()];
+        bufferHeight = 56;
+      }
+      buffer.add(buildRow(item, i));
+      bufferHeight += h;
+    }
+    if (buffer.length > 1) {
+      pages.add(Container(
+        decoration: BoxDecoration(border: Border.all(color: _docBorder, width: 0.8)),
+        child: Column(children: buffer),
+      ));
+    }
+    return pages;
   }
 
   Widget _docNonFunctionalReqTable(List items) {
@@ -898,11 +1144,14 @@ class _PreviewScreenState extends State<PreviewScreen> {
           padding: cover
               ? const EdgeInsets.symmetric(horizontal: 56, vertical: 60)
               : const EdgeInsets.fromLTRB(48, 40, 48, 36),
-          child: Column(
-            crossAxisAlignment: cover
-                ? CrossAxisAlignment.center
-                : CrossAxisAlignment.start,
-            children: children,
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: cover
+                  ? CrossAxisAlignment.center
+                  : CrossAxisAlignment.start,
+              children: children,
+            ),
           ),
         );
 
@@ -938,219 +1187,285 @@ class _PreviewScreenState extends State<PreviewScreen> {
       );
     }
 
-    return Column(
-      children: [
-        // ── Cover ────────────────────────────────────────────────────────
-        pageCard([
-          const Text('DOCUMENTO TÉCNICO',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2.2,
-                color: _docTextSub,
-              )),
-          const SizedBox(height: 28),
-          Text(projectName,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w800,
-                color: _docText,
-                height: 1.15,
-                letterSpacing: -0.5,
-              )),
-          const SizedBox(height: 12),
-          const Text('Especificación de Requisitos de Software',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: _docTextSub,
-                fontStyle: FontStyle.italic,
-              )),
-          const SizedBox(height: 44),
-          Center(
-            child: Container(
-                width: 64, height: 2, color: const Color(0xFFCBD5E0)),
+    // Helper para paginar y renderizar cada sección
+    List<Widget> paginated = [];
+
+    // Cover
+    final coverPages = paginateWidgets([
+      const Text('DOCUMENTO TÉCNICO',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2.2,
+            color: _docTextSub,
+          )),
+      const SizedBox(height: 28),
+      Text(projectName,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            color: _docText,
+            height: 1.15,
+            letterSpacing: -0.5,
+          )),
+      const SizedBox(height: 12),
+      const Text('Especificación de Requisitos de Software',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: _docTextSub,
+            fontStyle: FontStyle.italic,
+          )),
+      const SizedBox(height: 44),
+      Center(
+        child: Container(
+            width: 64, height: 2, color: const Color(0xFFCBD5E0)),
+      ),
+      const SizedBox(height: 40),
+      metaRow('CÓDIGO DEL PROYECTO', projectCode),
+      metaRow('VERSIÓN', version),
+      metaRow('FECHA', date),
+      if (statusDisplay.isNotEmpty) metaRow('ESTADO', statusDisplay),
+      metaRow('PROPIETARIO', owner),
+      metaRow('ORGANIZACIÓN', organization),
+      if (teamMembers.isNotEmpty) ...[  
+        const SizedBox(height: 32),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text('MIEMBROS DEL EQUIPO',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                  color: _docTextSub,
+                )),
           ),
-          const SizedBox(height: 40),
-          metaRow('CÓDIGO DEL PROYECTO', projectCode),
-          metaRow('VERSIÓN', version),
-          metaRow('FECHA', date),
-          if (statusDisplay.isNotEmpty) metaRow('ESTADO', statusDisplay),
-          metaRow('PROPIETARIO', owner),
-          metaRow('ORGANIZACIÓN', organization),
-          if (teamMembers.isNotEmpty) ...[  
-            const SizedBox(height: 32),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text('MIEMBROS DEL EQUIPO',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.4,
-                      color: _docTextSub,
-                    )),
-              ),
-            ),
-            _docMembersTable(teamMembers),
-          ],
-        ], cover: true),
-
-        const SizedBox(height: 24),
-
-        // ── Historial ─────────────────────────────────────────────────────
-        if (revisionHistory.isNotEmpty || approvalHistory.isNotEmpty) ...[  
-          pageCard([
-            _secHeading('', 'Historial de Revisiones y Aprobaciones'),
-            if (revisionHistory.isNotEmpty) ...[  
-              _subHeading('', 'Historial de Revisiones', first: true),
-              _docRevisionTable(revisionHistory),
-            ],
-            if (approvalHistory.isNotEmpty) ...[  
-              _subHeading('', 'Historial de Aprobaciones'),
-              _docApprovalTable(approvalHistory),
-            ],
-          ]),
-          const SizedBox(height: 24),
-        ],
-
-        // ── 1. Introducción ───────────────────────────────────────────────
-        pageCard([
-          _secHeading('1', 'Introducción'),
-          _subHeading('1.1', 'Propósito', first: true),
-          _docP(safeText(introduction['purpose'])),
-          _subHeading('1.2', 'Alcance'),
-          _docP(safeText(introduction['scope'])),
-          if (defs.isNotEmpty) ...[  
-            _subHeading('1.3', 'Definiciones, Acrónimos y Abreviaturas'),
-            _docDefinitionsList(defs),
-          ],
-          if (refs.isNotEmpty) ...[  
-            _subHeading('1.4', 'Referencias'),
-            _docBulletList(refs, emptyText: 'Sin referencias registradas'),
-          ],
-          if (overview.isNotEmpty) ...[  
-            _subHeading('1.5', 'Visión General'),
-            _docP(overview),
-          ],
-        ]),
-        const SizedBox(height: 24),
-
-        // ── 2. Descripción General ────────────────────────────────────────
-        pageCard([
-          _secHeading('2', 'Descripción General'),
-          _subHeading('2.1', 'Perspectiva del Producto', first: true),
-          _docP(safeText(overallDescription['productPerspective'])),
-          _subHeading('2.2', 'Funciones del Producto'),
-          _docP(safeText(overallDescription['productFunctions'])),
-          if (userClasses.isNotEmpty) ...[  
-            _subHeading('2.3', 'Clases de Usuario'),
-            _docUserClasses(userClasses),
-          ],
-          _subHeading('2.4', 'Entorno Operativo'),
-          _docP(safeText(overallDescription['operatingEnvironment'])),
-          _subHeading('2.5', 'Restricciones de Diseño e Implementación'),
-          _docP(safeText(overallDescription['constraints'])),
-          _subHeading('2.6', 'Suposiciones y Dependencias'),
-          _docP(safeText(overallDescription['assumptions'])),
-        ]),
-        const SizedBox(height: 24),
-
-        // ── 3. Requisitos Específicos ─────────────────────────────────────
-        pageCard([
-          _secHeading('3', 'Requisitos Específicos'),
-          _subHeading('3.1', 'Requisitos Funcionales', first: true),
-          _docFunctionalReqTable(functionalReqs),
-          _subHeading('3.2', 'Requisitos No Funcionales'),
-          _docNonFunctionalReqTable(nonFunctionalReqs),
-        ]),
-        const SizedBox(height: 24),
-
-        // ── 4. Interfaces Externas ────────────────────────────────────────
-        pageCard([
-          _secHeading('4', 'Interfaces Externas'),
-          _subHeading('4.1', 'Interfaces de Usuario', first: true),
-          _docP(safeText(externalInterfaces['user'])),
-          _subHeading('4.2', 'Interfaces de Hardware'),
-          _docP(safeText(externalInterfaces['hardware'])),
-          _subHeading('4.3', 'Interfaces de Software'),
-          _docP(safeText(externalInterfaces['software'])),
-          _subHeading('4.4', 'Interfaces de Comunicaciones'),
-          _docP(safeText(externalInterfaces['communications'])),
-        ]),
-
-        // ── 5. Apéndices ──────────────────────────────────────────────────
-        if (appendices.isNotEmpty) ...[  
-          const SizedBox(height: 24),
-          pageCard([
-            _secHeading('5', 'Apéndices'),
-            ...appendices.asMap().entries.map((e) {
-              final i = e.key;
-              final a = Map<String, dynamic>.from(e.value);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _subHeading(
-                    '${String.fromCharCode(65 + i)}.',
-                    safeText(a['title'], fallback: 'Apéndice ${i + 1}'),
-                    first: i == 0,
-                  ),
-                  _docP(safeText(a['content'])),
-                ],
-              );
-            }).toList(),
-          ]),
-        ],
-        // ── Custom sections ───────────────────────────────────────────────
-        ...() {
-          final customIds =
-              List<dynamic>.from(srs['customSectionIds'] ?? []);
-          if (customIds.isEmpty) return <Widget>[];
-          final widgets = <Widget>[];
-          for (var i = 0; i < customIds.length; i++) {
-            final secId = customIds[i] as String;
-            final sec =
-                Map<String, dynamic>.from(srs[secId] as Map? ?? {});
-            final secTitle =
-                safeText(sec['title'], fallback: 'Sección personalizada');
-            final subIds = List<dynamic>.from(
-                sec['subsectionIds'] as List? ?? []);
-            final secNum = (6 + i).toString();
-
-            widgets.add(const SizedBox(height: 24));
-            widgets.add(pageCard([
-              _secHeading(secNum, secTitle),
-              if (subIds.isEmpty)
-                _docP('Sin contenido.')
-              else
-                ...subIds.asMap().entries.map((e) {
-                  final subId = e.value as String;
-                  final sub = Map<String, dynamic>.from(
-                      sec[subId] as Map? ?? {});
-                  final subTitle =
-                      safeText(sub['title'], fallback: 'Subsección');
-                  final content =
-                      safeText(sub['content'], fallback: '');
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _subHeading('$secNum.${e.key + 1}', subTitle,
-                          first: e.key == 0),
-                      _docP(content),
-                    ],
-                  );
-                }),
-            ]));
-          }
-          return widgets;
-        }(),
-
-        const SizedBox(height: 40),
+        ),
+        _docMembersTable(teamMembers),
       ],
-    );
+    ]);
+    for (final page in coverPages) {
+      paginated.add(pageCard(page, cover: true));
+    }
+    paginated.add(const SizedBox(height: 24));
+
+    // Historial
+    if (revisionHistory.isNotEmpty || approvalHistory.isNotEmpty) {
+      final histPages = paginateWidgets([
+        _secHeading('', 'Historial de Revisiones y Aprobaciones'),
+        if (revisionHistory.isNotEmpty) ...[  
+          _subHeading('', 'Historial de Revisiones', first: true),
+          _docRevisionTable(revisionHistory),
+        ],
+        if (approvalHistory.isNotEmpty) ...[  
+          _subHeading('', 'Historial de Aprobaciones'),
+          _docApprovalTable(approvalHistory),
+        ],
+      ]);
+      for (final page in histPages) {
+        paginated.add(pageCard(page));
+      }
+      paginated.add(const SizedBox(height: 24));
+    }
+
+    // 1. Introducción
+    final introPages = paginateWidgets([
+      _secHeading('1', 'Introducción'),
+      _subHeading('1.1', 'Propósito', first: true),
+      _docP(safeText(introduction['purpose'])),
+      _subHeading('1.2', 'Alcance'),
+      _docP(safeText(introduction['scope'])),
+      if (defs.isNotEmpty) ...[  
+        _subHeading('1.3', 'Definiciones, Acrónimos y Abreviaturas'),
+        _docDefinitionsList(defs),
+      ],
+      if (refs.isNotEmpty) ...[  
+        _subHeading('1.4', 'Referencias'),
+        _docBulletList(refs, emptyText: 'Sin referencias registradas'),
+      ],
+      if (overview.isNotEmpty) ...[  
+        _subHeading('1.5', 'Visión General'),
+        _docP(overview),
+      ],
+    ]);
+    for (final page in introPages) {
+      paginated.add(pageCard(page));
+    }
+    paginated.add(const SizedBox(height: 24));
+
+    // 2. Descripción General
+    final descPages = paginateWidgets([
+      _secHeading('2', 'Descripción General'),
+      _subHeading('2.1', 'Perspectiva del Producto', first: true),
+      _docP(safeText(overallDescription['productPerspective'])),
+      _subHeading('2.2', 'Funciones del Producto'),
+      _docP(safeText(overallDescription['productFunctions'])),
+      if (userClasses.isNotEmpty) ...[  
+        _subHeading('2.3', 'Clases de Usuario'),
+        _docUserClasses(userClasses),
+      ],
+      _subHeading('2.4', 'Entorno Operativo'),
+      _docP(safeText(overallDescription['operatingEnvironment'])),
+      _subHeading('2.5', 'Restricciones de Diseño e Implementación'),
+      _docP(safeText(overallDescription['constraints'])),
+      _subHeading('2.6', 'Suposiciones y Dependencias'),
+      _docP(safeText(overallDescription['assumptions'])),
+    ]);
+    for (final page in descPages) {
+      paginated.add(pageCard(page));
+    }
+    paginated.add(const SizedBox(height: 24));
+
+    // 3. Requisitos Específicos
+    // Paginación especial para tablas grandes
+    final reqPages = <List<Widget>>[];
+    // Encabezado y subtítulo de sección
+    final secHeadingWidget = _secHeading('3', 'Requisitos Específicos');
+    final subFuncWidget = _subHeading('3.1', 'Requisitos Funcionales', first: true);
+    final funcPages = _paginatedFunctionalReqTable(functionalReqs);
+    // Agrupar subtítulo y al menos una tabla
+    if (funcPages.isNotEmpty) {
+      // Estimar altura de subtítulo y tabla
+      double estimateHeight(Widget w) {
+        if (w is Padding && w.child != null) return estimateHeight(w.child!);
+        if (w is Container && w.child is Column) {
+          final col = w.child as Column;
+          return col.children.length * 48.0 + 56.0;
+        }
+        return 200.0;
+      }
+      final subH = 40.0;
+      final firstTable = funcPages.first;
+      final tableH = estimateHeight(firstTable);
+      if (subH + tableH < 900) {
+        reqPages.add([secHeadingWidget, subFuncWidget, firstTable]);
+        for (var i = 1; i < funcPages.length; i++) {
+          reqPages.add([funcPages[i]]);
+        }
+      } else {
+        reqPages.add([secHeadingWidget, subFuncWidget]);
+        for (final p in funcPages) {
+          reqPages.add([p]);
+        }
+      }
+    } else {
+      reqPages.add([secHeadingWidget, subFuncWidget]);
+    }
+
+    // Ahora para no funcionales
+    final nonFuncPages = _paginatedNonFunctionalReqTable(nonFunctionalReqs);
+    final subNonFuncWidget = _subHeading('3.2', 'Requisitos No Funcionales');
+    if (nonFuncPages.isNotEmpty) {
+      final subH = 40.0;
+      final firstTable = nonFuncPages.first;
+      double estimateHeight(Widget w) {
+        if (w is Padding && w.child != null) return estimateHeight(w.child!);
+        if (w is Container && w.child is Column) {
+          final col = w.child as Column;
+          return col.children.length * 48.0 + 56.0;
+        }
+        return 200.0;
+      }
+      final tableH = estimateHeight(firstTable);
+      if (subH + tableH < 900) {
+        reqPages.add([subNonFuncWidget, firstTable]);
+        for (var i = 1; i < nonFuncPages.length; i++) {
+          reqPages.add([nonFuncPages[i]]);
+        }
+      } else {
+        reqPages.add([subNonFuncWidget]);
+        for (final p in nonFuncPages) {
+          reqPages.add([p]);
+        }
+      }
+    } else {
+      reqPages.add([subNonFuncWidget]);
+    }
+    for (final page in reqPages) {
+      paginated.add(pageCard(page));
+    }
+    paginated.add(const SizedBox(height: 24));
+
+    // 4. Interfaces Externas
+    final ifacePages = paginateWidgets([
+      _secHeading('4', 'Interfaces Externas'),
+      _subHeading('4.1', 'Interfaces de Usuario', first: true),
+      _docP(safeText(externalInterfaces['user'])),
+      _subHeading('4.2', 'Interfaces de Hardware'),
+      _docP(safeText(externalInterfaces['hardware'])),
+      _subHeading('4.3', 'Interfaces de Software'),
+      _docP(safeText(externalInterfaces['software'])),
+      _subHeading('4.4', 'Interfaces de Comunicaciones'),
+      _docP(safeText(externalInterfaces['communications'])),
+    ]);
+    for (final page in ifacePages) {
+      paginated.add(pageCard(page));
+    }
+
+    // 5. Apéndices
+    if (appendices.isNotEmpty) {
+      final appPages = paginateWidgets([
+        _secHeading('5', 'Apéndices'),
+        ...appendices.asMap().entries.map((e) {
+          final i = e.key;
+          final a = Map<String, dynamic>.from(e.value);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _subHeading(
+                '${String.fromCharCode(65 + i)}.',
+                safeText(a['title'], fallback: 'Apéndice ${i + 1}'),
+                first: i == 0,
+              ),
+              _docP(safeText(a['content'])),
+            ],
+          );
+        }).toList(),
+      ]);
+      for (final page in appPages) {
+        paginated.add(pageCard(page));
+      }
+    }
+
+    // Custom sections
+    final customIds = List<dynamic>.from(srs['customSectionIds'] ?? []);
+    for (var i = 0; i < customIds.length; i++) {
+      final secId = customIds[i] as String;
+      final sec = Map<String, dynamic>.from(srs[secId] as Map? ?? {});
+      final secTitle = safeText(sec['title'], fallback: 'Sección personalizada');
+      final subIds = List<dynamic>.from(sec['subsectionIds'] as List? ?? []);
+      final secNum = (6 + i).toString();
+      final customPages = paginateWidgets([
+        _secHeading(secNum, secTitle),
+        if (subIds.isEmpty)
+          _docP('Sin contenido.')
+        else
+          ...subIds.asMap().entries.map((e) {
+            final subId = e.value as String;
+            final sub = Map<String, dynamic>.from(sec[subId] as Map? ?? {});
+            final subTitle = safeText(sub['title'], fallback: 'Subsección');
+            final content = safeText(sub['content'], fallback: '');
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _subHeading('$secNum.${e.key + 1}', subTitle, first: e.key == 0),
+                _docP(content),
+              ],
+            );
+          }),
+      ]);
+      for (final page in customPages) {
+        paginated.add(pageCard(page));
+      }
+    }
+
+    paginated.add(const SizedBox(height: 40));
+
+    return Column(children: paginated);
   }
 
   // ───────────────────────────────────────────────────────────────────────
