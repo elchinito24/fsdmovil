@@ -67,8 +67,8 @@ class _ScheduleDetailScreenState extends State<ScheduleDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF151823) : const Color(0xFFF6F7FB);
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final titleColor = Theme.of(context).colorScheme.onBackground;
 
     return Scaffold(
       backgroundColor: bg,
@@ -170,7 +170,7 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
+    final borderColor = Theme.of(context).colorScheme.outlineVariant;
     final subColor = isDark ? fsdTextGrey : const Color(0xFF6B7280);
 
     return Container(
@@ -209,29 +209,35 @@ class _TopBar extends StatelessWidget {
           // Project info
           if (projectCode != null || projectName != null) ...[
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (projectCode != null)
-                  Text(
-                    projectCode!,
-                    style: const TextStyle(
-                      color: fsdPink,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (projectCode != null)
+                    Text(
+                      projectCode!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: fsdPink,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
                     ),
-                  ),
-                if (projectName != null)
-                  Text(
-                    projectName!,
-                    style: TextStyle(
-                      color: subColor,
-                      fontSize: 11,
+                  if (projectName != null)
+                    Text(
+                      projectName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: subColor,
+                        fontSize: 11,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ],
         ],
@@ -255,8 +261,8 @@ class _ViewToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
-    final bgInactive = isDark ? const Color(0xFF252838) : Colors.white;
+    final borderColor = Theme.of(context).colorScheme.outlineVariant;
+    final bgInactive = Theme.of(context).colorScheme.surface;
 
     return Container(
       decoration: BoxDecoration(
@@ -494,11 +500,13 @@ class _GanttViewState extends State<_GanttView> {
         break;
 
       case _ViewMode.month:
-        minDate = DateTime(rawMin.year, rawMin.month, 1);
+        // Show a bit of context around tasks: include previous month
+        // and an extra month after the last one so month view isn't too narrow.
+        minDate = DateTime(rawMin.year, rawMin.month - 1, 1);
         colW = 100.0;
         colDates = [];
         DateTime cur = minDate;
-        final stopDate = DateTime(rawMax.year, rawMax.month + 1, 1);
+        final stopDate = DateTime(rawMax.year, rawMax.month + 2, 1);
         while (cur.isBefore(stopDate)) {
           colDates.add(cur);
           cur = DateTime(cur.year, cur.month + 1, 1);
@@ -508,10 +516,15 @@ class _GanttViewState extends State<_GanttView> {
 
     final totalCols = colDates.length;
     final totalPx = colW * totalCols;
+    // Añade un padding a la derecha para que la última columna no quede pegada/cortada
+    // Usar más padding en la vista mes para evitar que, con pocas columnas,
+    // el timeline quede demasiado corto.
+    final rightPadding = colW * (widget.viewMode == _ViewMode.month ? 1.0 : 0.5);
+    final effectiveWidth = totalPx + rightPadding;
     final todayPx = _dateToPixel(todayNorm, minDate, widget.viewMode, colW);
 
-    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
-    final headerBg = isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB);
+    final borderColor = Theme.of(context).colorScheme.outlineVariant;
+    final headerBg = Theme.of(context).colorScheme.surfaceContainerHighest;
 
     const rowHeight = 54.0;
     const barHeight = 26.0;
@@ -648,31 +661,38 @@ class _GanttViewState extends State<_GanttView> {
           height: 24,
           color: headerBg,
           child: Row(
-            children: groups
-                .map((mg) => SizedBox(
-                      width: colW * mg.days,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Text(
-                          mg.label,
-                          style: const TextStyle(
-                            color: fsdPink,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
-                          ),
-                          overflow: TextOverflow.clip,
+            children: [
+              ...groups.map((mg) => SizedBox(
+                    width: colW * mg.days,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Text(
+                        mg.label,
+                        style: const TextStyle(
+                          color: fsdPink,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
                         ),
+                        overflow: TextOverflow.clip,
                       ),
-                    ))
-                .toList(),
+                    ),
+                  )),
+              SizedBox(width: rightPadding),
+            ],
           ),
         );
       }
+
       return Container(
         height: 24,
         color: headerBg,
-        child: Row(children: _buildYearGroups(colDates, colW)),
+        child: Row(
+          children: [
+            ..._buildYearGroups(colDates, colW),
+            SizedBox(width: rightPadding),
+          ],
+        ),
       );
     }
 
@@ -736,8 +756,8 @@ class _GanttViewState extends State<_GanttView> {
                         scrollDirection: Axis.horizontal,
                         controller: _hHeaderCtrl,
                         physics: const ClampingScrollPhysics(),
-                        child: SizedBox(
-                          width: totalPx,
+                          child: SizedBox(
+                          width: effectiveWidth,
                           height: headerH,
                           child: Column(
                             children: [
@@ -751,10 +771,11 @@ class _GanttViewState extends State<_GanttView> {
                                             BorderSide(color: borderColor)),
                                   ),
                                   child: Row(
-                                    children: colDates
-                                        .map((d) => buildColHeader(d))
-                                        .toList(),
-                                  ),
+                                      children: [
+                                        ...colDates.map((d) => buildColHeader(d)),
+                                        SizedBox(width: rightPadding),
+                                      ],
+                                    ),
                                 ),
                               ),
                             ],
@@ -769,7 +790,7 @@ class _GanttViewState extends State<_GanttView> {
                         controller: _hBodyCtrl,
                         physics: const ClampingScrollPhysics(),
                         child: SizedBox(
-                          width: totalPx,
+                          width: effectiveWidth,
                           child: SingleChildScrollView(
                             controller: _vBodyCtrl,
                             physics: const ClampingScrollPhysics(),
@@ -793,27 +814,27 @@ class _GanttViewState extends State<_GanttView> {
                                     endInclusive.add(const Duration(days: 1));
 
                                 final barLeft = _dateToPixel(
-                                        start, minDate, widget.viewMode, colW)
-                                    .clamp(0.0, totalPx);
+                                    start, minDate, widget.viewMode, colW)
+                                  .clamp(0.0, totalPx);
                                 final barRight = _dateToPixel(endExclusive,
-                                        minDate, widget.viewMode, colW)
-                                    .clamp(0.0, totalPx);
+                                    minDate, widget.viewMode, colW)
+                                  .clamp(0.0, totalPx);
                                 final barWidth =
                                     (barRight - barLeft).clamp(colW * 0.3, totalPx);
 
                                 final taskColor = task.taskColor;
                                 final rowBg = isDark
-                                    ? (i.isEven
-                                        ? fsdCardBg
-                                        : const Color(0xFF262830))
-                                    : (i.isEven
-                                        ? Colors.white
-                                        : const Color(0xFFFAFAFC));
+                                  ? (i.isEven
+                                    ? fsdCardBg
+                                    : Theme.of(context).colorScheme.surface)
+                                  : (i.isEven
+                                    ? Theme.of(context).colorScheme.surface
+                                    : Theme.of(context).colorScheme.surfaceContainerHighest);
 
                                 return GestureDetector(
                                   onTap: () => _showDetail(context, task),
                                   child: SizedBox(
-                                    width: totalPx,
+                                    width: effectiveWidth,
                                     height: rowHeight,
                                     child: Stack(
                                       clipBehavior: Clip.hardEdge,
@@ -1088,10 +1109,10 @@ class _GanttChart extends StatelessWidget {
     final dates = List.generate(totalDays, (i) => minDate.add(Duration(days: i)));
     final monthGroups = _buildMonthGroups(dates);
 
-    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
-    final headerBg = isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB);
-    final nameBg = isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB);
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
+    final borderColor = Theme.of(context).colorScheme.outlineVariant;
+    final headerBg = Theme.of(context).colorScheme.surfaceContainerHighest;
+    final nameBg = Theme.of(context).colorScheme.surfaceContainerHighest;
+    final titleColor = Theme.of(context).colorScheme.onBackground;
 
     return SizedBox(
       width: _nameWidth + dayWidth * totalDays,
@@ -1269,8 +1290,8 @@ class _GanttChart extends StatelessWidget {
 
             final taskColor = task.taskColor;
             final rowBg = isDark
-                ? (i.isEven ? fsdCardBg : const Color(0xFF262830))
-                : (i.isEven ? Colors.white : const Color(0xFFFAFAFC));
+              ? (i.isEven ? fsdCardBg : Theme.of(context).colorScheme.surface)
+              : (i.isEven ? Theme.of(context).colorScheme.surface : Theme.of(context).colorScheme.surfaceContainerHighest);
 
             return GestureDetector(
               onTap: () => _showDetail(context, task),
@@ -1494,10 +1515,10 @@ class _TaskDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark ? const Color(0xFF1E2130) : Colors.white;
-    final border = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
-    final subColor = isDark ? fsdTextGrey : const Color(0xFF6B7280);
+    final bg = Theme.of(context).colorScheme.surface;
+    final border = Theme.of(context).colorScheme.outlineVariant;
+    final titleColor = Theme.of(context).colorScheme.onBackground;
+    final subColor = Theme.of(context).colorScheme.onSurface.withOpacity(0.75);
 
     final duration = task.startDate != null && task.endDate != null
         ? task.endDate!.difference(task.startDate!).inDays + 1
@@ -1724,9 +1745,9 @@ class _DateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark ? const Color(0xFF252838) : const Color(0xFFF6F7FB);
-    final border = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
+    final bg = Theme.of(context).colorScheme.surface;
+    final border = Theme.of(context).colorScheme.outlineVariant;
+    final titleColor = Theme.of(context).colorScheme.onBackground;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -1778,8 +1799,8 @@ class _TasksListPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
+    final borderColor = Theme.of(context).colorScheme.outlineVariant;
+    final titleColor = Theme.of(context).colorScheme.onBackground;
 
     final completed = tasks.where((t) {
       final s = t.status.toLowerCase();
@@ -1918,10 +1939,10 @@ class _TaskListCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
-    final cardBg = isDark ? const Color(0xFF1E2130) : Colors.white;
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
-    final subColor = isDark ? fsdTextGrey : const Color(0xFF6B7280);
+    final borderColor = Theme.of(context).colorScheme.outlineVariant;
+    final cardBg = Theme.of(context).colorScheme.surface;
+    final titleColor = Theme.of(context).colorScheme.onBackground;
+    final subColor = Theme.of(context).colorScheme.onSurface.withOpacity(0.75);
 
     final duration = task.startDate != null && task.endDate != null
         ? task.endDate!.difference(task.startDate!).inDays + 1
@@ -2042,18 +2063,18 @@ class _EmptyTasksState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
-    final subColor = isDark ? fsdTextGrey : const Color(0xFF6B7280);
+    final titleColor = Theme.of(context).colorScheme.onBackground;
+    final subColor = Theme.of(context).colorScheme.onSurface.withOpacity(0.75);
 
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.event_busy_rounded,
+            Icon(Icons.event_busy_rounded,
               size: 52,
               color: isDark
-                  ? fsdTextGrey.withValues(alpha: 0.4)
-                  : const Color(0xFFD1D5DB)),
+                ? fsdTextGrey.withValues(alpha: 0.4)
+                : Theme.of(context).colorScheme.onSurface.withOpacity(0.35)),
           const SizedBox(height: 16),
           Text(
             'Sin tareas con fechas',
@@ -2084,8 +2105,8 @@ class _ErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
-    final subColor = isDark ? fsdTextGrey : const Color(0xFF6B7280);
+    final titleColor = Theme.of(context).colorScheme.onBackground;
+    final subColor = Theme.of(context).colorScheme.onSurface.withOpacity(0.75);
 
     return Center(
       child: Column(

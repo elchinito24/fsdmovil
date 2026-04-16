@@ -875,14 +875,38 @@ class ApiService {
   }
 
   static String _extractErrorMessage(dynamic errorData) {
-    if (errorData == null) {
-      return 'No se recibió detalle del error.';
-    }
+    if (errorData == null) return 'No se recibió detalle del error.';
 
-    if (errorData is Map<String, dynamic>) {
+    // Plain string
+    if (errorData is String) return errorData;
+
+    // Lists: join entries
+    if (errorData is List) return errorData.map((e) => e.toString()).join(' | ');
+
+    // Maps: try to produce a friendly, flattened message
+    if (errorData is Map) {
+      // If backend provides a top-level 'detail' (string or list), prefer it
       if (errorData['detail'] != null) {
-        return errorData['detail'].toString();
+        final d = errorData['detail'];
+        if (d is String) return d;
+        if (d is List) return d.map((e) => e.toString()).join(' | ');
+        return d.toString();
       }
+
+      final parts = <String>[];
+      errorData.forEach((key, value) {
+        if (value == null) return;
+        if (value is List) {
+          parts.add('$key: ${value.map((e) => e.toString()).join(', ')}');
+        } else if (value is Map) {
+          // Flatten nested map by joining its values
+          parts.add('$key: ${value.values.map((e) => e.toString()).join(', ')}');
+        } else {
+          parts.add('$key: ${value.toString()}');
+        }
+      });
+
+      if (parts.isNotEmpty) return parts.join(' | ');
       return errorData.toString();
     }
 

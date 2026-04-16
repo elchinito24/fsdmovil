@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
@@ -42,8 +43,45 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return bDate.compareTo(aDate);
       });
 
+      // Keep only projects that have at least one version that introduces
+      // a change in `srs_data`. Use parallel requests for speed.
+      final futures = sorted.map((p) async {
+        final pidRaw = p['id'];
+        if (pidRaw == null) return null;
+        final pid = pidRaw as int;
+        try {
+          final versions = await ApiService.getProjectVersions(pid);
+          if (versions.isEmpty) return null;
+
+          final normalized = <Map<String, dynamic>>[];
+          for (final v in versions) {
+            if (v is Map) normalized.add(Map<String, dynamic>.from(v));
+          }
+
+          // If there is more than one version, check for any consecutive
+          // pair that differ in `srs_data` (API returns newest-first).
+          for (var i = 0; i < normalized.length; i++) {
+            final curr = normalized[i];
+            final next = i + 1 < normalized.length ? normalized[i + 1] : null;
+            final cs = curr['srs_data'] == null ? '' : jsonEncode(curr['srs_data']);
+            final ns = next == null || next['srs_data'] == null ? '' : jsonEncode(next['srs_data']);
+            if (cs != ns) return p;
+          }
+
+          // Single-version projects: count as change only if srs_data is non-empty.
+          final first = normalized.first;
+          final firstSrs = first['srs_data'];
+          if (firstSrs is Map && firstSrs.isNotEmpty) return p;
+          if (firstSrs is String && firstSrs.trim().isNotEmpty) return p;
+        } catch (_) {}
+        return null;
+      }).toList();
+
+      final results = await Future.wait(futures);
+      final withVersions = results.where((r) => r != null).toList();
+
       setState(() {
-        projects = sorted;
+        projects = withVersions;
         loading = false;
         errorMessage = null;
       });
@@ -425,70 +463,23 @@ class _HistoryCard extends StatelessWidget {
                 _HistoryChip(icon: Icons.update_rounded, label: updatedAtLabel),
               ],
             ),
-            const SizedBox(height: 18),
-            Text(
-              'Progreso actual',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: progressValue / 100,
-                minHeight: 9,
-                backgroundColor: Theme.of(context).colorScheme.outlineVariant,
-                valueColor: const AlwaysStoppedAnimation<Color>(fsdPink),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '$progressValue%',
-              style: const TextStyle(
-                color: fsdTextGrey,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onOpenEditor,
-                    icon: const Icon(Icons.edit_note_rounded, size: 18),
-                    label: const Text('Abrir editor'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onOpenVersionHistory,
+                icon: const Icon(Icons.visibility_outlined, size: 18),
+                label: const Text('Ver cambios'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: fsdPink,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: onOpenVersionHistory,
-                    icon: const Icon(Icons.visibility_outlined, size: 18),
-                    label: const Text('Ver cambios'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: fsdPink,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),

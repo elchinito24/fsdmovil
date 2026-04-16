@@ -27,10 +27,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     loadReviews();
   }
 
+  // version label cache: projectId → latest version map
+  final Map<int, Map<String, dynamic>> _latestVersionByProject = {};
+
   Future<void> loadReviews() async {
     try {
-      // Fetch all accessible projects then keep only the ones this user owns.
-      // Non-owners submit for review — they never appear in this queue.
       final ownProjects = await ApiService.getProjects();
       final workspaces  = await ApiService.getWorkspaces();
 
@@ -54,7 +55,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         } catch (_) {}
       }
 
-      // Only keep projects where the current user is the owner.
       final currentEmail =
           (AuthService.userEmail ?? '').trim().toLowerCase();
       final owned = byId.values.where((p) {
@@ -68,6 +68,40 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             '';
         return ownerEmail.isNotEmpty && ownerEmail == currentEmail;
       }).toList();
+
+      // Fetch versions for owned projects so we detect review snapshots that
+      // may have been created from the editor (labelled like "Revisión pendiente").
+      await Future.wait(owned.map((p) async {
+        final idRaw = p['id'];
+        if (idRaw == null) return;
+        final id = idRaw as int;
+        try {
+          final versions = await ApiService.getProjectVersions(id);
+          if (versions.isNotEmpty) {
+            // Prefer a snapshot that looks like a pending review, fallback to first
+            Map<String, dynamic>? chosen;
+            for (final v in versions) {
+              if (v is Map) {
+                final label = (v['label'] ?? '').toString().toLowerCase();
+                if (label.contains('revisión') || label.contains('revision') || label.contains('pendiente')) {
+                  chosen = Map<String, dynamic>.from(v);
+                  break;
+                }
+              }
+            }
+            chosen ??= Map<String, dynamic>.from(versions.first as Map);
+            _latestVersionByProject[id] = chosen;
+
+            // If a pending-review snapshot exists, mark the project locally as
+            // being in review so it appears under "Pendientes" even if the
+            // project's status wasn't updated for some reason.
+            final chosenLabel = (chosen['label'] ?? '').toString().toLowerCase();
+            if (chosenLabel.contains('revisión') || chosenLabel.contains('revision') || chosenLabel.contains('pendiente')) {
+              p['status'] = 'review';
+            }
+          }
+        } catch (_) {}
+      }));
 
       if (!mounted) return;
 
@@ -298,7 +332,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
                             color: selected
-                                ? fsdPink.withOpacity(0.2)
+                                ? fsdPink.withValues(alpha: 0.2)
                                 : surface,
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
@@ -333,11 +367,13 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                       final p = data[i];
                       final status = (p['status'] ?? '').toString();
 
+                      final pid = p['id'] as int;
                       return _ReviewCard(
                         project: p,
                         status: _statusLabel(status),
                         color: _statusColor(status),
-                        onPreview: () => _openPreview(p['id']),
+                        latestVersion: _latestVersionByProject[pid],
+                        onPreview: () => _openPreview(pid),
                         onApprove: status == 'review'
                             ? () => _approveReview(p)
                             : null,
@@ -357,6 +393,7 @@ class _ReviewCard extends StatelessWidget {
   final dynamic project;
   final String status;
   final Color color;
+  final Map<String, dynamic>? latestVersion;
   final VoidCallback onPreview;
   final VoidCallback? onApprove;
   final VoidCallback? onReject;
@@ -366,73 +403,219 @@ class _ReviewCard extends StatelessWidget {
     required this.status,
     required this.color,
     required this.onPreview,
+    this.latestVersion,
     this.onApprove,
     this.onReject,
   });
 
+  String _formatDate(dynamic raw) {
+    final value = raw?.toString();
+    if (value == null || value.isEmpty) return '';
+    try {
+      final date = DateTime.parse(value).toLocal();
+      final d = date.day.toString().padLeft(2, '0');
+      final m = date.month.toString().padLeft(2, '0');
+      final y = date.year.toString();
+      final h = date.hour.toString().padLeft(2, '0');
+      final min = date.minute.toString().padLeft(2, '0');
+      return '$d/$m/$y $h:$min';
+    } catch (_) {
+      return value;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final versionLabel =
+        latestVersion != null ? (latestVersion!['label'] ?? '').toString() : '';
+    final versionNumber = latestVersion != null
+        ? (latestVersion!['version_number'] ?? '').toString()
+        : '';
+    final versionAuthor =
+        latestVersion != null ? (latestVersion!['created_by_email'] ?? '').toString() : '';
+    final versionDate = latestVersion != null
+        ? _formatDate(latestVersion!['created_at'])
+        : '';
+    final hasVersion = latestVersion != null && versionLabel.isNotEmpty;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: fsdCardBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: fsdBorderColor),
+        border: Border.all(
+          color: onApprove != null ? Colors.orange.withValues(alpha: 0.5) : fsdBorderColor,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            project['name'] ?? '',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-              fontSize: 16,
+          // ── Header ──────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        project['name'] ?? '',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                        ),
+                      ),
+                      if ((project['description'] ?? '').toString().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          project['description'].toString(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: fsdTextGrey, fontSize: 13),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            project['description'] ?? '',
-            style: const TextStyle(color: fsdTextGrey),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  status,
-                  style: TextStyle(color: color, fontWeight: FontWeight.bold),
-                ),
+
+          // ── Version info ─────────────────────────────────────────────
+          if (hasVersion) ...[
+            const SizedBox(height: 12),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 18),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
               ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.visibility, color: Colors.white),
-                onPressed: onPreview,
-                tooltip: 'Vista previa',
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.bookmark_outlined,
+                      size: 16, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            if (versionNumber.isNotEmpty) ...[
+                              Text(
+                                'v$versionNumber',
+                                style: const TextStyle(
+                                  color: fsdPink,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            Expanded(
+                              child: Text(
+                                versionLabel,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (versionAuthor.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            'Por $versionAuthor${versionDate.isNotEmpty ? '  •  $versionDate' : ''}',
+                            style: const TextStyle(
+                                color: fsdTextGrey, fontSize: 11),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              if (onApprove != null)
-                IconButton(
-                  icon: const Icon(Icons.check_circle_outline_rounded,
-                      color: Color(0xFF1BC47D)),
-                  onPressed: onApprove,
-                  tooltip: 'Aprobar',
+            ),
+          ],
+
+          // ── Actions ──────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+            child: Row(
+              children: [
+                // Preview
+                OutlinedButton.icon(
+                  onPressed: onPreview,
+                  icon: const Icon(Icons.visibility_outlined, size: 16),
+                  label: const Text('Ver'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: fsdBorderColor),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    textStyle: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
                 ),
-              if (onReject != null)
-                IconButton(
-                  icon: const Icon(Icons.cancel_outlined, color: fsdPink),
-                  onPressed: onReject,
-                  tooltip: 'Rechazar',
-                ),
-            ],
+                const Spacer(),
+                if (onReject != null) ...[
+                  OutlinedButton.icon(
+                    onPressed: onReject,
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    label: const Text('Rechazar'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: fsdPink,
+                      side: BorderSide(color: fsdPink.withValues(alpha: 0.5)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      textStyle: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (onApprove != null)
+                  ElevatedButton.icon(
+                    onPressed: onApprove,
+                    icon: const Icon(Icons.check_rounded, size: 16),
+                    label: const Text('Aceptar'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1BC47D),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      textStyle: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -446,7 +629,6 @@ class _EmptyReviews extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surface = Theme.of(context).colorScheme.surface;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(

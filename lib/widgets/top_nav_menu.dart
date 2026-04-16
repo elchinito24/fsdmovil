@@ -45,21 +45,21 @@ class _TopNavMenuState extends State<TopNavMenu> {
     //   item: TopNavItem.documents,
     //   route: '/documents',
     // ),
-    _NavMenuData(
-      label: 'Revisiones',
-      item: TopNavItem.reviews,
-      route: '/reviews',
-    ),
+    // _NavMenuData(
+    //   label: 'Revisiones',
+    //   item: TopNavItem.reviews,
+    //   route: '/reviews',
+    // ),
     _NavMenuData(
       label: 'Diagramas',
       item: TopNavItem.diagrams,
       route: '/diagrams',
     ),
-    _NavMenuData(
-      label: 'Historial',
-      item: TopNavItem.history,
-      route: '/history',
-    ),
+    // _NavMenuData(
+    //   label: 'Historial',
+    //   item: TopNavItem.history,
+    //   route: '/history',
+    // ),
     _NavMenuData(
       label: 'Cronograma',
       item: TopNavItem.schedule,
