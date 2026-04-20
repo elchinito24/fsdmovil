@@ -50,11 +50,11 @@ Page<void> _slideTransition(
     final secondaryPosition = Tween<Offset>(
       begin: Offset.zero,
       end: const Offset(-0.12, 0.0),
-    ).chain(CurveTween(curve: Curves.easeInOut)).animate(secondaryAnimation);
+    ).chain(CurveTween(curve: Curves.easeInOut)).animate(secondaryAnimation);   
 
     return SlideTransition(
       position: primaryPosition,
-      child: SlideTransition(position: secondaryPosition, child: child),
+      child: SlideTransition(position: secondaryPosition, child: child),        
     );
   },
 );
@@ -63,7 +63,7 @@ final appRouter = GoRouter(
   initialLocation: '/splash',
   observers: [routeObserver],
   redirect: (context, state) {
-    // El deep link fsdmovil://login-callback es manejado por supabase_flutter
+    // El deep link fsdmovil://login-callback es manejado por supabase_flutter  
     // internamente. GoRouter no debe procesarlo como ruta.
     final location = state.uri.toString();
     if (location.startsWith('fsdmovil://login-callback') ||
@@ -105,6 +105,10 @@ final appRouter = GoRouter(
             GoRoute(
               path: '/workspaces',
               builder: (c, s) => const WorkspacesScreen(),
+            ),
+            GoRoute(
+              path: '/invitations',
+              pageBuilder: (context, state) => NoTransitionPage(child: const InvitationsScreen()),
             ),
             GoRoute(
               path: '/workspace/:id',
@@ -174,7 +178,7 @@ final appRouter = GoRouter(
           context,
           state,
           CreateProjectScreen(
-            preselectedWorkspaceId: wsId != null ? int.tryParse(wsId) : null,
+            preselectedWorkspaceId: wsId != null ? int.tryParse(wsId) : null,   
           ),
         );
       },
@@ -182,20 +186,20 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/create-workspace',
       pageBuilder: (context, state) =>
-          _slideTransition(context, state, const CreateWorkspaceScreen()),
+          _slideTransition(context, state, const CreateWorkspaceScreen()),      
     ),
     GoRoute(
       path: '/editor/:id',
       pageBuilder: (context, state) {
         final id = int.parse(state.pathParameters['id']!);
-        return _slideTransition(context, state, EditorScreen(projectId: id));
+        return _slideTransition(context, state, EditorScreen(projectId: id));   
       },
     ),
     GoRoute(
       path: '/preview/:id',
       pageBuilder: (context, state) {
         final id = int.parse(state.pathParameters['id']!);
-        return _slideTransition(context, state, PreviewScreen(projectId: id));
+        return _slideTransition(context, state, PreviewScreen(projectId: id));  
       },
     ),
     GoRoute(
@@ -242,11 +246,7 @@ final appRouter = GoRouter(
         );
       },
     ),
-    GoRoute(
-      path: '/invitations',
-      pageBuilder: (context, state) =>
-          _slideTransition(context, state, const InvitationsScreen()),
-    ),
+    
     GoRoute(
       path: '/settings',
       pageBuilder: (context, state) =>
@@ -256,12 +256,12 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/team-meetings',
       pageBuilder: (context, state) =>
-          _slideTransition(context, state, const TeamMeetingLobbyScreen()),
+          _slideTransition(context, state, const TeamMeetingLobbyScreen()),     
     ),
     GoRoute(
       path: '/team-meeting-room/:sessionId',
       pageBuilder: (context, state) {
-        final sessionId = int.parse(state.pathParameters['sessionId']!);
+        final sessionId = int.parse(state.pathParameters['sessionId']!);        
         return _slideTransition(
           context,
           state,
@@ -272,7 +272,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/team-meeting-result/:sessionId',
       pageBuilder: (context, state) {
-        final sessionId = int.parse(state.pathParameters['sessionId']!);
+        final sessionId = int.parse(state.pathParameters['sessionId']!);        
         return _slideTransition(
           context,
           state,
@@ -283,7 +283,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/team-meeting-history/:projectId',
       pageBuilder: (context, state) {
-        final projectId = int.parse(state.pathParameters['projectId']!);
+        final projectId = int.parse(state.pathParameters['projectId']!);        
         return _slideTransition(
           context,
           state,
@@ -300,8 +300,7 @@ final appRouter = GoRouter(
     ),
   ],
 );
-
-class _SectionPlaceholderScreen extends StatelessWidget {
+  class _SectionPlaceholderScreen extends StatelessWidget {
   final TopNavItem selectedItem;
   final String eyebrow;
   final String titleWhite;

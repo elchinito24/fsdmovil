@@ -2186,23 +2186,23 @@ class _EditorScreenState extends State<EditorScreen> {
                                 ],
                               ),
                             ),
-                            PopupMenuItem(
-                              value: 'history',
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.history_rounded,
-                                    color: Theme.of(context).colorScheme.onSurface,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    'Historial de versiones',
-                                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            // PopupMenuItem(
+                            //   value: 'history',
+                            //   child: Row(
+                            //     children: [
+                            //       Icon(
+                            //         Icons.history_rounded,
+                            //         color: Theme.of(context).colorScheme.onSurface,
+                            //         size: 18,
+                            //       ),
+                            //       const SizedBox(width: 10),
+                            //       Text(
+                            //         'Historial de versiones',
+                            //         style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                            //       ),
+                            //     ],
+                            //   ),
+                            // ),
                             PopupMenuItem(
                               value: 'download',
                               enabled: !_downloading,

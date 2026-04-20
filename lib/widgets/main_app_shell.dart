@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/providers/auth_provider.dart';
@@ -215,8 +216,10 @@ class MainAppShell extends ConsumerWidget {
                       ),
                     ),
                     const Spacer(),
-                    const _NotificationsBell(),
-                    const SizedBox(width: 6),
+                    if (!GoRouterState.of(context).uri.path.contains('/invitations')) ...[
+                      const _NotificationsBell(),
+                      const SizedBox(width: 6),
+                    ],
                     const _UserMenuButton(),
                   ],
                 ),
@@ -308,8 +311,78 @@ class MainAppShell extends ConsumerWidget {
   }
 }
 
-class _NotificationsBell extends StatelessWidget {
+class _NotificationsBell extends StatefulWidget {
   const _NotificationsBell();
+
+  @override
+  State<_NotificationsBell> createState() => _NotificationsBellState();
+}
+
+class _NotificationsBellState extends State<_NotificationsBell> {
+  final GlobalKey _buttonKey = GlobalKey();
+  OverlayEntry? _overlayEntry;
+
+  void _removeOverlay() {
+    if (_overlayEntry != null) {
+      _overlayEntry!.remove();
+      _overlayEntry = null;
+    }
+  }
+
+  void _showOverlay() {
+    final rootContext = context;
+    final RenderBox button = _buttonKey.currentContext!.findRenderObject() as RenderBox;
+    final RenderBox overlay = Overlay.of(rootContext)!.context.findRenderObject() as RenderBox;
+    final buttonOffset = button.localToGlobal(Offset.zero, ancestor: overlay);
+    final Rect buttonRect = Rect.fromLTWH(
+      buttonOffset.dx,
+      buttonOffset.dy,
+      button.size.width,
+      button.size.height,
+    );
+
+    // Match the navbar width (screen width minus horizontal margins)
+    final double overlayWidth = overlay.size.width - 32;
+    // Align overlay to navbar left margin (16px)
+    final double leftClamped = 16.0;
+    final double top = buttonRect.bottom + 8;
+
+    _overlayEntry = OverlayEntry(builder: (overlayContext) {
+      return Positioned.fill(
+        child: Stack(
+          children: [
+            // Scrim: darken background and capture taps to close
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _removeOverlay,
+                child: Container(color: Colors.black.withOpacity(0.35)),
+              ),
+            ),
+            // Notifications dialog aligned under the bell (same width as navbar)
+            Positioned(
+              left: leftClamped,
+              top: top,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: overlayWidth,
+                  child: _NotificationsDialog(
+                    onClose: _removeOverlay,
+                    onOpenFull: () {
+                      _removeOverlay();
+                      rootContext.push('/invitations');
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+
+    Overlay.of(rootContext)!.insert(_overlayEntry!);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -325,12 +398,19 @@ class _NotificationsBell extends StatelessWidget {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            IconButton(
-              tooltip: 'Invitaciones',
-              onPressed: () async {
-                await context.push('/invitations');
-              },
-              icon: Icon(Icons.notifications_none_rounded, color: iconColor),
+            Container(
+              key: _buttonKey,
+              child: IconButton(
+                tooltip: 'Notificaciones',
+                onPressed: () {
+                  if (_overlayEntry == null) {
+                    _showOverlay();
+                  } else {
+                    _removeOverlay();
+                  }
+                },
+                icon: Icon(Icons.notifications_none_rounded, color: iconColor),
+              ),
             ),
             if (unread > 0)
               Positioned(
@@ -536,6 +616,318 @@ class _UserMenuCard extends ConsumerWidget {
   }
 }
 
+class _NotificationsDialog extends StatefulWidget {
+  final VoidCallback onClose;
+  final VoidCallback onOpenFull;
+
+  const _NotificationsDialog({
+    required this.onClose,
+    required this.onOpenFull,
+    Key? key,
+  }) : super(key: key);
+
+  @override
+  State<_NotificationsDialog> createState() => _NotificationsDialogState();
+}
+
+class _NotificationsDialogState extends State<_NotificationsDialog> {
+  bool loading = true;
+  String? errorMessage;
+  List<dynamic> notifications = [];
+  bool processing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    try {
+      final data = await ApiService.getNotifications(unreadOnly: true);
+      if (!mounted) return;
+      setState(() {
+        notifications = data;
+        loading = false;
+        errorMessage = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        errorMessage = e.toString();
+      });
+    }
+  }
+
+  Future<void> _acceptInvitation(dynamic notification) async {
+    final invitationId = notification['invitation_id'] as int?;
+    final notificationId = notification['id'] as int?;
+    if (invitationId == null || notificationId == null) return;
+
+    try {
+      setState(() {
+        processing = true;
+      });
+
+      await ApiService.acceptWorkspaceInvitation(invitationId);
+      await ApiService.markNotificationAsRead(notificationId);
+
+      if (!mounted) return;
+
+      setState(() {
+        notifications.removeWhere((n) => n['id'] == notificationId);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invitación aceptada correctamente'),
+          backgroundColor: fsdPink,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: fsdPink,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        processing = false;
+      });
+    }
+  }
+
+  Future<void> _declineInvitation(dynamic notification) async {
+    final invitationId = notification['invitation_id'] as int?;
+    final notificationId = notification['id'] as int?;
+    if (invitationId == null || notificationId == null) return;
+
+    try {
+      setState(() {
+        processing = true;
+      });
+
+      await ApiService.declineWorkspaceInvitation(invitationId);
+      await ApiService.markNotificationAsRead(notificationId);
+
+      if (!mounted) return;
+
+      setState(() {
+        notifications.removeWhere((n) => n['id'] == notificationId);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invitación rechazada'),
+          backgroundColor: fsdPink,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: fsdPink,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        processing = false;
+      });
+    }
+  }
+
+  String _formatDate(String raw) {
+    if (raw.trim().isEmpty) return 'Sin fecha';
+    try {
+      final date = DateTime.parse(raw).toLocal();
+      return '${date.day.toString().padLeft(2, '0')}/'
+          '${date.month.toString().padLeft(2, '0')}/'
+          '${date.year} ${date.hour.toString().padLeft(2, '0')}:'
+          '${date.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? fsdCardBg : Colors.white;
+    final borderColor = isDark ? fsdBorderColor : const Color(0xFFE5E7EF);
+    final titleColor = isDark ? Colors.white : const Color(0xFF151823);
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: math.min(360.0, MediaQuery.of(context).size.width - 32),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 22,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Notificaciones',
+                style: TextStyle(
+                  color: titleColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(child: CircularProgressIndicator(color: fsdPink)),
+              )
+            else if (errorMessage != null)
+              Column(
+                children: [
+                  Text(
+                    errorMessage!,
+                    style: const TextStyle(color: fsdTextGrey),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _loadNotifications,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: fsdPink,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Reintentar'),
+                    ),
+                  ),
+                ],
+              )
+            else if (notifications.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'No tienes notificaciones pendientes',
+                  style: TextStyle(color: fsdTextGrey),
+                ),
+              )
+            else
+              Column(
+                children: notifications.take(5).map<Widget>((n) {
+                  final title = (n['title'] ?? '').toString();
+                  final body = (n['body'] ?? '').toString();
+                  final createdAt = (n['created_at'] ?? '').toString();
+                  final isInvitation = (n['type'] ?? '').toString() == 'workspace_invitation';
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0x22E8365D),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.mail_outline_rounded, color: fsdPink, size: 20),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title, style: TextStyle(color: titleColor, fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 4),
+                              Text(body, style: const TextStyle(color: fsdTextGrey, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+                              const SizedBox(height: 6),
+                              Text(_formatDate(createdAt), style: const TextStyle(color: fsdTextGrey, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                        if (isInvitation)
+                          Column(
+                            children: [
+                              OutlinedButton(
+                                onPressed: processing ? null : () => _declineInvitation(n),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: const Text('Rechazar', style: TextStyle(fontWeight: FontWeight.w700)),
+                              ),
+                              const SizedBox(height: 6),
+                              ElevatedButton(
+                                onPressed: processing ? null : () => _acceptInvitation(n),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: fsdPink,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: const Text('Aceptar', style: TextStyle(fontWeight: FontWeight.w800)),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: widget.onOpenFull,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Ver más', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ThemeModeButton extends StatelessWidget {
   final bool selected;
   final IconData icon;
@@ -657,7 +1049,7 @@ class PersistentShell extends StatelessWidget {
     final currentPath = GoRouterState.of(context).uri.path;
     const _rootPaths = {
       '/dashboard', '/workspaces', '/projects', '/documents',
-      '/reviews', '/diagrams', '/history', '/meeting-mode', '/schedule',
+      '/reviews', '/diagrams', '/history', '/schedule',
     };
     final isSubPage = !_rootPaths.contains(currentPath);
 
@@ -760,8 +1152,10 @@ class PersistentShell extends StatelessWidget {
                       onPressed: () => context.go('/meeting-mode'),
                       icon: Icon(Icons.mic_rounded, color: titleColor),
                     ),
-                    const _NotificationsBell(),
-                    const SizedBox(width: 6),
+                    if (!currentPath.contains('/invitations')) ...[
+                      const _NotificationsBell(),
+                      const SizedBox(width: 6),
+                    ],
                     const _UserMenuButton(),
                   ],
                 ),

@@ -186,6 +186,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       titlePink: 'invitaciones',
       description:
           'Aquí aparecen las invitaciones pendientes que recibes para unirte a workspaces.',
+      insideShell: true,
       action: notifications.isNotEmpty
           ? SizedBox(
               width: double.infinity,
