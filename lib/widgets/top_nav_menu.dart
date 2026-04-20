@@ -46,7 +46,7 @@ class _TopNavMenuState extends State<TopNavMenu> {
     //   route: '/documents',
     // ),
     // _NavMenuData(
-    //   label: 'Revisiones',
+    //   label: 'Revisiones e historial',
     //   item: TopNavItem.reviews,
     //   route: '/reviews',
     // ),
@@ -55,11 +55,6 @@ class _TopNavMenuState extends State<TopNavMenu> {
       item: TopNavItem.diagrams,
       route: '/diagrams',
     ),
-    // _NavMenuData(
-    //   label: 'Historial',
-    //   item: TopNavItem.history,
-    //   route: '/history',
-    // ),
     _NavMenuData(
       label: 'Cronograma',
       item: TopNavItem.schedule,

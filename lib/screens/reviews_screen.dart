@@ -6,7 +6,8 @@ import 'package:fsdmovil/widgets/main_app_shell.dart';
 import 'package:fsdmovil/widgets/top_nav_menu.dart';
 
 class ReviewsScreen extends StatefulWidget {
-  const ReviewsScreen({super.key});
+  final bool embedded;
+  const ReviewsScreen({super.key, this.embedded = false});
 
   @override
   State<ReviewsScreen> createState() => _ReviewsScreenState();
@@ -15,11 +16,14 @@ class ReviewsScreen extends StatefulWidget {
 class _ReviewsScreenState extends State<ReviewsScreen> {
   bool loading = true;
   String? errorMessage;
-  List<dynamic> projects = [];
+
+  // Projects owned by current user that have pending revisions to approve.
+  List<dynamic> _ownedPending = [];
+  // Projects NOT owned by current user where current user submitted a revision.
+  List<dynamic> _sentByMe = [];
 
   String filter = 'Pendientes';
-
-  final filters = ['Pendientes', 'Todos'];
+  final filters = ['Pendientes', 'Enviadas', 'Todos'];
 
   @override
   void initState() {
@@ -36,18 +40,15 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       final workspaces  = await ApiService.getWorkspaces();
 
       final Map<int, dynamic> byId = {};
-
       for (final p in ownProjects) {
         final id = p['id'];
         if (id != null) byId[id as int] = p;
       }
-
       for (final ws in workspaces) {
         final wsId = ws['id'];
         if (wsId == null) continue;
         try {
-          final wsProjects =
-              await ApiService.getProjectsByWorkspace(wsId as int);
+          final wsProjects = await ApiService.getProjectsByWorkspace(wsId as int);
           for (final p in wsProjects) {
             final id = p['id'];
             if (id != null) byId[id as int] = p;
@@ -55,64 +56,88 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         } catch (_) {}
       }
 
-      final currentEmail =
-          (AuthService.userEmail ?? '').trim().toLowerCase();
-      final owned = byId.values.where((p) {
-        final ownerField = p['owner'];
-        final ownerEmail = (ownerField is Map
-                ? ownerField['email']
-                : ownerField)
-            ?.toString()
-            .trim()
-            .toLowerCase() ??
-            '';
-        return ownerEmail.isNotEmpty && ownerEmail == currentEmail;
-      }).toList();
+      final currentEmail = (AuthService.userEmail ?? '').trim().toLowerCase();
+      final currentId   = AuthService.userId;
 
-      // Fetch versions for owned projects so we detect review snapshots that
-      // may have been created from the editor (labelled like "Revisión pendiente").
+      bool isOwnerOf(dynamic p) {
+        final ownerField = p['owner'];
+        if (ownerField is Map) {
+          final email = (ownerField['email'] ?? '').toString().trim().toLowerCase();
+          if (email.isNotEmpty && email == currentEmail) return true;
+          final id = ownerField['id'];
+          if (currentId != null && id != null) {
+            return id.toString() == currentId.toString();
+          }
+          return false;
+        }
+        // Integer owner ID (compact list response)
+        if (ownerField is int && currentId != null) return ownerField == currentId;
+        // String fallback (email or stringified ID)
+        final s = ownerField?.toString().trim().toLowerCase() ?? '';
+        if (s.isEmpty) return false;
+        if (s == currentEmail) return true;
+        if (currentId != null && s == currentId.toString()) return true;
+        return false;
+      }
+
+      final owned    = byId.values.where((p) =>  isOwnerOf(p)).toList();
+      final nonOwned = byId.values.where((p) => !isOwnerOf(p)).toList();
+
+      // Owned projects: pending = API status is 'in_review'.
+      // Also cache the latest version for the approve flow (to get srs_data).
       await Future.wait(owned.map((p) async {
-        final idRaw = p['id'];
-        if (idRaw == null) return;
-        final id = idRaw as int;
+        final id = p['id'] as int?;
+        if (id == null) return;
+        final apiStatus = (p['status'] ?? '').toString();
+        if (apiStatus == 'in_review') {
+          // Keep status as 'review' locally so filteredProjects works.
+          p['status'] = 'review';
+        }
         try {
           final versions = await ApiService.getProjectVersions(id);
           if (versions.isNotEmpty) {
-            // Prefer a snapshot that looks like a pending review, fallback to first
-            Map<String, dynamic>? chosen;
-            for (final v in versions) {
-              if (v is Map) {
-                final label = (v['label'] ?? '').toString().toLowerCase();
-                if (label.contains('revisión') || label.contains('revision') || label.contains('pendiente')) {
-                  chosen = Map<String, dynamic>.from(v);
-                  break;
-                }
-              }
-            }
-            chosen ??= Map<String, dynamic>.from(versions.first as Map);
-            _latestVersionByProject[id] = chosen;
+            _latestVersionByProject[id] =
+                Map<String, dynamic>.from(versions.first as Map);
+          }
+        } catch (_) {}
+      }));
 
-            // If a pending-review snapshot exists, mark the project locally as
-            // being in review so it appears under "Pendientes" even if the
-            // project's status wasn't updated for some reason.
-            final chosenLabel = (chosen['label'] ?? '').toString().toLowerCase();
-            if (chosenLabel.contains('revisión') || chosenLabel.contains('revision') || chosenLabel.contains('pendiente')) {
-              p['status'] = 'review';
-            }
+      // Non-owned: visible to sender when project status is 'in_review'
+      // AND the most recent version was created by the current user.
+      final List<dynamic> sentList = [];
+      await Future.wait(nonOwned.map((p) async {
+        final id = p['id'] as int?;
+        if (id == null) return;
+        final apiStatus = (p['status'] ?? '').toString();
+        if (apiStatus != 'in_review') return;
+        try {
+          final versions = await ApiService.getProjectVersions(id);
+          if (versions.isEmpty) return;
+          final latest = Map<String, dynamic>.from(versions.first as Map);
+          final createdBy = latest['created_by'];
+          final creator = (createdBy is Map
+              ? (createdBy['email'] ?? '')
+              : (latest['created_by_email'] ?? ''))
+              .toString().trim().toLowerCase();
+          if (creator == currentEmail) {
+            final copy = Map<String, dynamic>.from(p as Map);
+            copy['_sentVersion'] = latest;
+            copy['status'] = 'review';
+            _latestVersionByProject[id] = latest;
+            sentList.add(copy);
           }
         } catch (_) {}
       }));
 
       if (!mounted) return;
-
       setState(() {
-        projects = owned;
+        _ownedPending = owned;
+        _sentByMe = sentList;
         loading = false;
         errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
         loading = false;
         errorMessage = e.toString();
@@ -121,13 +146,24 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   }
 
   List<dynamic> get filteredProjects {
-    if (filter == 'Todos') return projects;
-
-    // 'Pendientes' = projects actually awaiting approval.
-    return projects.where((p) {
-      final status = (p['status'] ?? '').toString().toLowerCase();
-      return status == 'review';
-    }).toList();
+    switch (filter) {
+      case 'Pendientes':
+        return _ownedPending.where((p) =>
+          (p['status'] ?? '').toString().toLowerCase() == 'review').toList();
+      case 'Enviadas':
+        return _sentByMe;
+      case 'Todos':
+        final all = <dynamic>[..._ownedPending, ..._sentByMe];
+        final seen = <int>{};
+        return all.where((p) {
+          final id = p['id'] as int?;
+          if (id == null || seen.contains(id)) return false;
+          seen.add(id);
+          return true;
+        }).toList();
+      default:
+        return _ownedPending;
+    }
   }
 
   Future<void> _openPreview(int id) async {
@@ -175,11 +211,21 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     if (confirmed != true || !mounted) return;
 
     try {
+      // Non-owner already pushed their changes to the live SRS when submitting.
+      // Approving just marks the project as approved and stamps a version.
       await ApiService.partialUpdateProject(id, {'status': 'approved'});
+
+      final versions = await ApiService.getProjectVersions(id);
+      await ApiService.createProjectVersion(id, {
+        'version_number': (versions.length + 1).toString(),
+        'version_name': 'Aprobada - v${versions.length + 1}',
+        'change_description': 'Revisión aprobada por el propietario',
+      });
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cambios aprobados'),
+          content: Text('Cambios aprobados y aplicados al SRS'),
           backgroundColor: Color(0xFF1BC47D),
         ),
       );
@@ -188,7 +234,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: fsdPink),
+        SnackBar(content: Text('Error al aprobar: $e'), backgroundColor: fsdPink),
       );
     }
   }
@@ -207,7 +253,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             style:
                 TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
         content: Text(
-          '¿Rechazar los cambios en "$name"? Se restaurará la versión anterior al envío.',
+          '¿Rechazar los cambios en "$name"? Los cambios propuestos no se aplicarán al SRS.',
           style: const TextStyle(color: fsdTextGrey, height: 1.45),
         ),
         actions: [
@@ -228,29 +274,32 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     if (confirmed != true || !mounted) return;
 
     try {
-      // Find the version saved just before review was submitted.
+      // Non-owner pushed their changes to live SRS when submitting.
+      // Restore the version prior to the submission to revert those changes.
       final versions = await ApiService.getProjectVersions(id);
-      // Versions are ordered newest-first; the one labelled 'Revisión pendiente'
-      // contains the submitted srs_data. We want the one *before* it to restore.
-      // Strategy: take the second entry if it exists; otherwise just revert status.
+      // versions is ordered newest-first; [0] = pending, [1] = previous owner state
       if (versions.length >= 2) {
-        // Index 0 = the submitted review snapshot, index 1 = previous state.
-        final prevVersion =
-            Map<String, dynamic>.from(versions[1] as Map);
-        final prevSrsData =
-            prevVersion['srs_data'] as Map<String, dynamic>?;
-        if (prevSrsData != null) {
-          await ApiService.updateProjectSrs(id, {'srs_data': prevSrsData});
+        final prevVersionId = (versions[1] as Map)['id'] as int?;
+        if (prevVersionId != null) {
+          await ApiService.restoreProjectVersion(id, prevVersionId);
         }
       }
-      // Set status back to in_progress (was being edited).
-      await ApiService.partialUpdateProject(
-          id, {'status': 'in_progress'});
+
+      // Set status back to draft.
+      await ApiService.partialUpdateProject(id, {'status': 'draft'});
+
+      // Create a neutral version marking the rejection.
+      final updatedVersions = await ApiService.getProjectVersions(id);
+      await ApiService.createProjectVersion(id, {
+        'version_number': (updatedVersions.length + 1).toString(),
+        'version_name': 'Rechazada - v${updatedVersions.length + 1}',
+        'change_description': 'Revisión rechazada por el propietario',
+      });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cambios rechazados. Versión anterior restaurada.'),
+          content: Text('Revisión rechazada. El SRS no fue modificado.'),
           backgroundColor: fsdPink,
         ),
       );
@@ -259,7 +308,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: fsdPink),
+        SnackBar(content: Text('Error al rechazar: $e'), backgroundColor: fsdPink),
       );
     }
   }
@@ -285,10 +334,83 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     }
   }
 
+  Widget _buildContent(BuildContext context) {
+    final data = filteredProjects;
+    if (loading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 60),
+          child: CircularProgressIndicator(color: fsdPink),
+        ),
+      );
+    }
+    if (errorMessage != null) {
+      return Center(child: Text(errorMessage!, style: const TextStyle(color: Colors.white)));
+    }
+    return Column(
+      children: [
+        const SizedBox(height: 10),
+        Row(
+          children: filters.map((f) {
+            final selected = f == filter;
+            final surface = Theme.of(context).colorScheme.surface;
+            final onSurface = Theme.of(context).colorScheme.onSurface;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => filter = f),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: selected ? fsdPink.withValues(alpha: 0.2) : surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: selected ? fsdPink : fsdBorderColor),
+                  ),
+                  child: Center(
+                    child: Text(
+                      f,
+                      style: TextStyle(
+                        color: selected ? fsdPink : onSurface,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        if (data.isEmpty)
+          const _EmptyReviews()
+        else
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: data.length,
+            itemBuilder: (context, i) {
+              final p = data[i];
+              final status = (p['status'] ?? '').toString();
+              final pid = p['id'] as int;
+              final isSentByMe = p['_sentVersion'] != null;
+              return _ReviewCard(
+                project: p,
+                status: isSentByMe ? 'En espera' : _statusLabel(status),
+                color: isSentByMe ? Colors.orange : _statusColor(status),
+                latestVersion: _latestVersionByProject[pid],
+                onPreview: () => _openPreview(pid),
+                onApprove: (!isSentByMe && status == 'review') ? () => _approveReview(p) : null,
+                onReject: (!isSentByMe && status == 'review') ? () => _rejectReview(p) : null,
+              );
+            },
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final data = filteredProjects;
-
+    if (widget.embedded) return _buildContent(context);
     return MainAppShell(
       insideShell: true,
       selectedItem: TopNavItem.reviews,
@@ -296,95 +418,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       titleWhite: 'Gestión de ',
       titlePink: 'revisiones',
       description: 'Aprueba, revisa y valida documentos SRS.',
-      child: loading
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.only(top: 60),
-                child: CircularProgressIndicator(color: fsdPink),
-              ),
-            )
-          : errorMessage != null
-          ? Center(
-              child: Text(
-                errorMessage!,
-                style: const TextStyle(color: Colors.white),
-              ),
-            )
-          : Column(
-              children: [
-                const SizedBox(height: 10),
-
-                // filtro
-                Row(
-                  children: filters.map((f) {
-                    final selected = f == filter;
-                    final surface = Theme.of(context).colorScheme.surface;
-                    final onSurface = Theme.of(context).colorScheme.onSurface;
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            filter = f;
-                          });
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? fsdPink.withValues(alpha: 0.2)
-                                : surface,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: selected ? fsdPink : fsdBorderColor,
-                            ),
-                          ),
-                          child: Center(
-                            child: Text(
-                              f,
-                              style: TextStyle(
-                                color: selected ? fsdPink : onSurface,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-                const SizedBox(height: 16),
-
-                if (data.isEmpty)
-                  const _EmptyReviews()
-                else
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: data.length,
-                    itemBuilder: (context, i) {
-                      final p = data[i];
-                      final status = (p['status'] ?? '').toString();
-
-                      final pid = p['id'] as int;
-                      return _ReviewCard(
-                        project: p,
-                        status: _statusLabel(status),
-                        color: _statusColor(status),
-                        latestVersion: _latestVersionByProject[pid],
-                        onPreview: () => _openPreview(pid),
-                        onApprove: status == 'review'
-                            ? () => _approveReview(p)
-                            : null,
-                        onReject: status == 'review'
-                            ? () => _rejectReview(p)
-                            : null,
-                      );
-                    },
-                  ),
-              ],
-            ),
+      child: _buildContent(context),
     );
   }
 }
@@ -426,13 +460,19 @@ class _ReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final versionLabel =
-        latestVersion != null ? (latestVersion!['label'] ?? '').toString() : '';
+    final versionLabel = latestVersion != null
+        ? (latestVersion!['version_name'] ?? latestVersion!['label'] ?? '').toString()
+        : '';
     final versionNumber = latestVersion != null
         ? (latestVersion!['version_number'] ?? '').toString()
         : '';
-    final versionAuthor =
-        latestVersion != null ? (latestVersion!['created_by_email'] ?? '').toString() : '';
+    String versionAuthor = '';
+    if (latestVersion != null) {
+      final createdBy = latestVersion!['created_by'];
+      versionAuthor = createdBy is Map
+          ? (createdBy['email'] ?? createdBy['first_name'] ?? '').toString()
+          : (latestVersion!['created_by_email'] ?? '').toString();
+    }
     final versionDate = latestVersion != null
         ? _formatDate(latestVersion!['created_at'])
         : '';

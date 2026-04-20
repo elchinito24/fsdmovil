@@ -14,7 +14,7 @@ import 'package:fsdmovil/screens/workspace_detail_screen.dart';
 import 'package:fsdmovil/screens/workspaces_screen.dart';
 import 'package:fsdmovil/widgets/main_app_shell.dart';
 import 'package:fsdmovil/widgets/top_nav_menu.dart';
-import 'package:fsdmovil/screens/reviews_screen.dart';
+import 'package:fsdmovil/screens/reviews_history_screen.dart';
 import 'package:fsdmovil/screens/diagrams_screen.dart';
 import 'package:fsdmovil/screens/diagram_detail_screen.dart';
 import 'package:fsdmovil/screens/diagram_editor_screen.dart';
@@ -133,7 +133,7 @@ final appRouter = GoRouter(
         ),
         StatefulShellBranch(
           routes: [
-            GoRoute(path: '/reviews', builder: (c, s) => const ReviewsScreen()),
+            GoRoute(path: '/reviews', builder: (c, s) => const ReviewsHistoryScreen()),
           ],
         ),
         StatefulShellBranch(

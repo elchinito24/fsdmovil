@@ -1072,15 +1072,18 @@ class ApiService {
   static Future<Map<String, dynamic>> aiGenerateFullSrs(
     int projectId, {
     Map<String, dynamic>? data,
+    String? aiApiKey,
   }) async {
     try {
+      final opts = Options(
+        receiveTimeout: const Duration(seconds: 180),
+        sendTimeout: const Duration(seconds: 60),
+        headers: aiApiKey != null ? {'X-AI-API-Key': aiApiKey} : null,
+      );
       final response = await _dio.post(
         '/projects/$projectId/ai-generate-full/',
         data: data ?? {},
-        options: Options(
-          receiveTimeout: const Duration(seconds: 180),
-          sendTimeout: const Duration(seconds: 60),
-        ),
+        options: opts,
       );
       return Map<String, dynamic>.from(response.data);
     } on DioException catch (e) {
@@ -1094,16 +1097,19 @@ class ApiService {
 
   static Future<Map<String, dynamic>> aiGenerateSrsSection(
     int projectId,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    String? aiApiKey,
+  }) async {
     try {
+      final opts = Options(
+        receiveTimeout: const Duration(seconds: 120),
+        sendTimeout: const Duration(seconds: 60),
+        headers: aiApiKey != null ? {'X-AI-API-Key': aiApiKey} : null,
+      );
       final response = await _dio.post(
         '/projects/$projectId/ai-generate/',
         data: data,
-        options: Options(
-          receiveTimeout: const Duration(seconds: 120),
-          sendTimeout: const Duration(seconds: 60),
-        ),
+        options: opts,
       );
       return Map<String, dynamic>.from(response.data);
     } on DioException catch (e) {
@@ -1112,6 +1118,19 @@ class ApiService {
       );
     } catch (e) {
       throw Exception('Error al generar sección con IA: $e');
+    }
+  }
+
+  /// Guarda las API keys/ajustes de IA para el usuario en el backend.
+  /// El `data` puede contener `openai_api_key`, `anthropic_api_key`, `gemini_api_key`,
+  /// y otros campos de preferencia (ej: modelo, idioma).
+  static Future<void> saveAiSettings(Map<String, dynamic> data) async {
+    try {
+      await _dio.put('/api/v1/ai/settings/', data: data);
+    } on DioException catch (e) {
+      throw Exception('Error al guardar settings IA: ${_extractErrorMessage(e.response?.data ?? e.message)}');
+    } catch (e) {
+      throw Exception('Error al guardar settings IA: $e');
     }
   }
 
@@ -1306,6 +1325,24 @@ class ApiService {
       );
     } catch (e) {
       throw Exception('Error al obtener versión: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> restoreProjectVersion(
+    int projectId,
+    int versionId,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/projects/$projectId/versions/$versionId/',
+      );
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw Exception(
+        'Error al restaurar versión: ${e.response?.data ?? e.message}',
+      );
+    } catch (e) {
+      throw Exception('Error al restaurar versión: $e');
     }
   }
 

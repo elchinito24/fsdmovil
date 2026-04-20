@@ -8,7 +8,7 @@ import 'package:fsdmovil/services/srs_word_service.dart';
 
 const _pink = Color(0xFFE8365D);
 const _textGrey = Color(0xFF8E8E93);
-const String _defaultAiPrompt = 'Genera el SRS completo en español para este proyecto usando la información disponible. Devuelve únicamente el objeto JSON correspondiente a "srs_data" con todas las secciones completadas.';
+const String _defaultAiPrompt = '';
 
 class EditorScreen extends StatefulWidget {
   final int projectId;
@@ -57,7 +57,6 @@ class _EditorScreenState extends State<EditorScreen> {
   _focusHeartbeat; // re-anuncia el campo activo cada 3s para nuevos usuarios
 
   // ── Save ──────────────────────────────────────────────────────────────────
-  String _saveStatus = 'idle';
   bool _downloading = false;
   bool _creatingVersion = false;
   bool _saveValidationEnabled = true;
@@ -243,7 +242,8 @@ class _EditorScreenState extends State<EditorScreen> {
         errorMessage = null;
       });
 
-      if (isNewSrs) {
+      // Only auto-save an initial SRS when the current user is the owner.
+      if (isNewSrs && isOwner) {
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
           try {
@@ -352,6 +352,22 @@ class _EditorScreenState extends State<EditorScreen> {
       final newVal = _getPath(newData, entry.key)?.toString() ?? '';
       if (entry.value.text != newVal) entry.value.text = newVal;
     }
+  }
+
+  void _mergeIntoDocData(Map<String, dynamic> target, Map<String, dynamic> patch) {
+    void merge(Map<String, dynamic> t, Map<String, dynamic> p) {
+      for (final key in p.keys) {
+        final pv = p[key];
+        if (pv is Map && t[key] is Map) {
+          // Ensure pv is a Map<String, dynamic> before merging
+          merge(t[key] as Map<String, dynamic>, Map<String, dynamic>.from(pv as Map));
+        } else {
+          t[key] = pv;
+        }
+      }
+    }
+
+    merge(target, patch);
   }
 
   // ── Realtime ──────────────────────────────────────────────────────────────
@@ -472,6 +488,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _scheduleRealtimeSync() {
     if (_applyingRemote) return;
+    // Non-owners must not push changes live — their edits stay local until
+    // the owner approves the submitted revision.
+    if (!_isOwner) return;
     if (_realtimeService == null || !_realtimeService!.isConnected) return;
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 1200), () {
@@ -483,122 +502,28 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Create new revision ───────────────────────────────────────────────────
 
-  Future<void> saveChanges() async {
-    if (_focusedPath != null) {
-      _focusHeartbeat?.cancel();
-      _realtimeService?.sendFieldBlur(path: _focusedPath!);
-      _focusedPath = null;
-      _focusedLabel = null;
-    }
+  Future<void> _createNewRevision() async {
+    if (_creatingVersion || saving) return;
 
-    FocusScope.of(context).unfocus();
-
-    if (_saveValidationEnabled) {
-      final projectName = (_getPath(_docData, 'metadata.projectName') ?? '')
-          .toString()
-          .trim();
-
-      if (projectName.isEmpty) {
-        if (!mounted) return;
-        setState(() => _saveStatus = 'error');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('El nombre del proyecto es obligatorio'),
-            backgroundColor: _pink,
-          ),
-        );
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) setState(() => _saveStatus = 'idle');
-        });
-        return;
-      }
-    }
-
-    setState(() {
-      saving = true;
-      _saveStatus = 'saving';
-    });
-
-    try {
-      final response = await ApiService.updateProjectSrs(widget.projectId, {
-        'srs_data': _docData,
-      });
-
-      if (!mounted) return;
-
-      final savedSrs = Map<String, dynamic>.from(
-        response['srs_data'] ?? _docData,
-      );
-
-      _applyingRemote = true;
-      _applyDocData(savedSrs);
-      _applyingRemote = false;
-
-      setState(() {
-        fullResponse = {...?fullResponse, ...response};
-        serverUpdatedAt = response['updated_at']?.toString() ?? serverUpdatedAt;
-        _saveStatus = 'saved';
-        _lastRealtimeMessage = 'Cambios guardados manualmente';
-        _conflictMessage = null;
-        _syncing = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cambios guardados correctamente'),
-          backgroundColor: Color(0xFF1BC47D),
-        ),
-      );
-
-      Future.delayed(const Duration(milliseconds: 2500), () {
-        if (mounted) setState(() => _saveStatus = 'idle');
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _saveStatus = 'error';
-        _syncing = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Error al guardar: ${e.toString().replaceFirst('Exception: ', '')}',
-          ),
-          backgroundColor: _pink,
-        ),
-      );
-
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) setState(() => _saveStatus = 'idle');
-      });
-    } finally {
-      if (mounted) {
-        setState(() => saving = false);
-      }
-    }
-  }
-  // ── Send for review (non-owners) ──────────────────────────────────────────
-
-  Future<void> sendForReview() async {
-    if (saving) return;
-
-    // Confirm with user.
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(ctx).colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         title: Text(
-          'Enviar a revisión',
-          style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface, fontWeight: FontWeight.w800),
+          'Nueva revisión',
+          style: TextStyle(
+            color: Theme.of(ctx).colorScheme.onSurface,
+            fontWeight: FontWeight.w800,
+          ),
         ),
-        content: const Text(
-          'Tus cambios se guardarán como una versión nueva y el dueño del proyecto podrá aceptarlos o rechazarlos. ¿Continuar?',
-          style: TextStyle(color: _textGrey, height: 1.45),
+        content: Text(
+          _isOwner
+              ? 'Se creará una nueva revisión con los cambios actuales y quedará registrada en el historial.'
+              : 'Los cambios se enviarán al dueño del proyecto para su revisión. Si los acepta, se aplicarán al SRS.',
+          style: const TextStyle(color: _textGrey, height: 1.45),
         ),
         actions: [
           TextButton(
@@ -611,179 +536,63 @@ class _EditorScreenState extends State<EditorScreen> {
               backgroundColor: _pink,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Enviar'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    setState(() {
-      saving = true;
-      _saveStatus = 'saving';
-    });
-
-    try {
-      // 1. Save a named version snapshot so the owner can restore it if rejected.
-      final existingVersions =
-          await ApiService.getProjectVersions(widget.projectId);
-      await ApiService.createProjectVersion(widget.projectId, {
-        'srs_data': _docData,
-        'label': 'Revisión pendiente',
-        'created_by_email': AuthService.userEmail ?? '',
-        'version_number': existingVersions.length + 1,
-      });
-
-      // 2. Write the new SRS data live.
-      await ApiService.updateProjectSrs(widget.projectId, {
-        'srs_data': _docData,
-      });
-
-      // 3. Mark the project as "in review".
-      await ApiService.partialUpdateProject(widget.projectId, {
-        'status': 'review',
-      });
-
-      if (!mounted) return;
-      setState(() {
-        _saveStatus = 'saved';
-        _lastRealtimeMessage = 'Enviado a revisión';
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cambios enviados a revisión'),
-          backgroundColor: Color(0xFF1BC47D),
-        ),
-      );
-      Future.delayed(const Duration(milliseconds: 2500), () {
-        if (mounted) setState(() => _saveStatus = 'idle');
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _saveStatus = 'error');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al enviar: $e'), backgroundColor: _pink),
-      );
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) setState(() => _saveStatus = 'idle');
-      });
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  // ── Create new version ────────────────────────────────────────────────────
-
-  Future<void> _createNewVersion() async {
-    if (_creatingVersion || saving) return;
-
-    final labelController = TextEditingController();
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(ctx).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        // title: Text(
-        //   'Nueva versión',
-        //   style: TextStyle(
-        //     color: Theme.of(ctx).colorScheme.onSurface,
-        //     fontWeight: FontWeight.w800,
-        //   ),
-        // ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _isOwner
-                  ? 'Se guardará un snapshot con los cambios actuales. No requiere revisión.'
-                  : 'Los cambios se enviarán al líder del proyecto para su aprobación.',
-              style: const TextStyle(color: _textGrey, height: 1.45),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: labelController,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Nombre de la versión',
-                hintText: 'Ej: v1.0, Sprint 2...',
-                labelStyle: const TextStyle(color: _textGrey),
-                hintStyle: const TextStyle(color: _textGrey),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                      color: Theme.of(ctx).colorScheme.outlineVariant),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _pink),
-                ),
-              ),
-              style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar', style: TextStyle(color: _textGrey)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _pink,
-              foregroundColor: Colors.white,
-            ),
-            child:
-                Text(_isOwner ? 'Crear versión' : 'Enviar a revisión'),
+            child: Text(_isOwner ? 'Crear revisión' : 'Enviar revisión'),
           ),
         ],
       ),
     );
 
     if (confirmed != true) return;
-
-    final label = labelController.text.trim();
-    if (label.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('El nombre de la versión no puede estar vacío'),
-          backgroundColor: _pink,
-        ),
-      );
-      return;
-    }
 
     setState(() => _creatingVersion = true);
 
     try {
       final existingVersions =
           await ApiService.getProjectVersions(widget.projectId);
-      await ApiService.createProjectVersion(widget.projectId, {
-        'srs_data': _docData,
-        'label': label,
-        'created_by_email': AuthService.userEmail ?? '',
-        'version_number': existingVersions.length + 1,
-      });
+      final revisionNumber = existingVersions.length + 1;
+      final label = 'Revision pendiente $revisionNumber';
 
-      await ApiService.updateProjectSrs(widget.projectId, {
-        'srs_data': _docData,
-      });
-
-      if (!_isOwner) {
+      if (_isOwner) {
+        // Owner: apply changes directly, record in revision history, then snapshot.
+        final now = DateTime.now().toIso8601String();
+        final revHistory = List<dynamic>.from(
+          (_docData['revisionHistory'] as List?) ?? [],
+        );
+        revHistory.add({
+          'version': label,
+          'date': now,
+          'author': AuthService.userEmail ?? '',
+          'description': 'Revisión creada por el propietario',
+        });
+        _docData['revisionHistory'] = revHistory;
+        await ApiService.updateProjectSrs(widget.projectId, {
+          'srs_data': _docData,
+        });
+      } else {
+        // Non-owner: push local changes to live SRS so the version snapshot
+        // captures them. Owner can restore the previous version on reject.
+        await ApiService.updateProjectSrs(widget.projectId, {
+          'srs_data': _docData,
+        });
         await ApiService.partialUpdateProject(
-            widget.projectId, {'status': 'review'});
+            widget.projectId, {'status': 'in_review'});
       }
+
+      await ApiService.createProjectVersion(widget.projectId, {
+        'version_number': revisionNumber.toString(),
+        'version_name': label,
+        'change_description': _isOwner
+            ? 'Revisión creada por el propietario'
+            : 'Revisión pendiente de aprobación',
+      });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             _isOwner
-                ? 'Versión "$label" creada correctamente'
-                : 'Versión "$label" enviada a revisión',
+                ? 'Revisión $revisionNumber creada'
+                : 'Revisión $revisionNumber enviada al propietario',
           ),
           backgroundColor: const Color(0xFF1BC47D),
         ),
@@ -792,11 +601,55 @@ class _EditorScreenState extends State<EditorScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Error al crear versión: $e'),
+            content: Text('Error al crear revisión: $e'),
             backgroundColor: _pink),
       );
     } finally {
       if (mounted) setState(() => _creatingVersion = false);
+    }
+  }
+
+  Future<void> _saveNow() async {
+    if (saving || _creatingVersion) return;
+    setState(() => saving = true);
+    try {
+      final saved = await ApiService.updateProjectSrs(widget.projectId, {
+        'srs_data': _docData,
+      });
+
+      if (!mounted) return;
+
+      final savedSrs = Map<String, dynamic>.from(
+        saved['srs_data'] ?? _docData,
+      );
+
+      _applyingRemote = true;
+      _applyDocData(savedSrs);
+      _applyingRemote = false;
+
+      setState(() {
+        fullResponse = {...?fullResponse, ...saved};
+        serverUpdatedAt = saved['updated_at']?.toString() ?? serverUpdatedAt;
+        _lastRealtimeMessage = 'Guardado correctamente';
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cambios guardados'),
+          backgroundColor: Color(0xFF1BC47D),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al guardar: $e'),
+          backgroundColor: _pink,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => saving = false);
     }
   }
 
@@ -819,70 +672,6 @@ class _EditorScreenState extends State<EditorScreen> {
     } finally {
       if (mounted) setState(() => _downloading = false);
     }
-  }
-
-  Widget _buildSaveButton() {
-    Color color;
-    String label;
-    Widget iconWidget;
-
-    if (_saveStatus == 'saving') {
-      color = const Color(0xFF55A6FF);
-      label = _isOwner ? 'Guardando' : 'Enviando';
-      iconWidget = SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(strokeWidth: 2, color: color),
-      );
-    } else if (_saveStatus == 'saved') {
-      color = const Color(0xFF1BC47D);
-      label = _isOwner ? 'Guardado' : 'Enviado';
-      iconWidget = const Icon(
-        Icons.check_circle_outline_rounded,
-        size: 16,
-        color: Color(0xFF1BC47D),
-      );
-    } else if (_saveStatus == 'error') {
-      color = _pink;
-      label = 'Error';
-      iconWidget = const Icon(
-        Icons.error_outline_rounded,
-        size: 16,
-        color: _pink,
-      );
-    } else if (_isOwner) {
-      color = Theme.of(context).colorScheme.onSurface;
-      label = 'Guardar';
-      iconWidget = Icon(
-        Icons.save_outlined,
-        size: 16,
-        color: Theme.of(context).colorScheme.onSurface,
-      );
-    } else {
-      color = _pink;
-      label = 'Enviar revisión';
-      iconWidget = const Icon(Icons.send_rounded, size: 16, color: _pink);
-    }
-
-    return TextButton.icon(
-      onPressed: saving
-          ? null
-          : _isOwner
-          ? saveChanges
-          : sendForReview,
-      icon: iconWidget,
-      label: Text(
-        label,
-        style: TextStyle(
-          color: saving ? _textGrey : color,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-      ),
-    );
   }
 
   Future<void> _showConflictDialog({
@@ -2501,14 +2290,12 @@ class _EditorScreenState extends State<EditorScreen> {
                             );
                           }),
                           const SizedBox(width: 8),
-                          _buildSaveButton(),
-                          const SizedBox(width: 4),
-                          // Botón de "Nueva versión"
+                          /*
                           Tooltip(
-                            message: _isOwner ? 'Crear nueva versión' : 'Enviar nueva versión a revisión',
+                            message: _isOwner ? 'Crear nueva revisión' : 'Enviar revisión al propietario',
                             child: InkWell(
                               borderRadius: BorderRadius.circular(8),
-                              onTap: (_creatingVersion || saving) ? null : _createNewVersion,
+                              onTap: (_creatingVersion || saving) ? null : _createNewRevision,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                 child: _creatingVersion
@@ -2521,15 +2308,53 @@ class _EditorScreenState extends State<EditorScreen> {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Icon(
-                                            Icons.bookmark_add_outlined,
+                                            Icons.rate_review_outlined,
                                             size: 16,
-                                            color: (_creatingVersion || saving) ? _textGrey : Theme.of(context).colorScheme.onSurface,
+                                            color: (_creatingVersion || saving) ? _textGrey : _pink,
                                           ),
                                           const SizedBox(width: 4),
                                           Text(
-                                            'Nueva versión',
+                                            'Nueva revisión',
                                             style: TextStyle(
-                                              color: (_creatingVersion || saving) ? _textGrey : Theme.of(context).colorScheme.onSurface,
+                                              color: (_creatingVersion || saving) ? _textGrey : _pink,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                          ),
+                          */
+
+                          // Nuevo botón temporal: Guardar directamente (no pasar por revisiones)
+                          Tooltip(
+                            message: 'Guardar cambios',
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: (saving || _creatingVersion) ? null : _saveNow,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                child: saving
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: _pink),
+                                      )
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.save_outlined,
+                                            size: 16,
+                                            color: (saving || _creatingVersion) ? _textGrey : _pink,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Guardar',
+                                            style: TextStyle(
+                                              color: (saving || _creatingVersion) ? _textGrey : _pink,
                                               fontSize: 12,
                                               fontWeight: FontWeight.w700,
                                             ),
@@ -2561,9 +2386,28 @@ class _EditorScreenState extends State<EditorScreen> {
                           ? _AiView(
                               projectId: widget.projectId,
                               srsData: _docData,
+                              formSections: _formSections,
                               onApplied: () async {
                                 setState(() => loading = true);
                                 await loadSrs();
+                              },
+                              onApplyToEditor: (patch) async {
+                                // Merge patch into local _docData, update controllers,
+                                // then save changes to the backend automatically.
+                                try {
+                                  setState(() => _applyingRemote = true);
+                                  _mergeIntoDocData(_docData, patch);
+                                  _applyDocData(Map<String, dynamic>.from(_docData));
+
+                                  // Persist the applied changes
+                                  try {
+                                    await _saveNow();
+                                  } catch (_) {
+                                    // _saveNow handles its own error UI; ignore here
+                                  }
+                                } finally {
+                                  setState(() => _applyingRemote = false);
+                                }
                               },
                             )
                           : ListView(
@@ -3151,8 +2995,9 @@ class _AiView extends StatefulWidget {
   final int projectId;
   final Future<void> Function() onApplied;
   final Map<String, dynamic> srsData;
-
-  const _AiView({required this.projectId, required this.onApplied, required this.srsData});
+  final List<dynamic> formSections;
+  final Future<void> Function(Map<String, dynamic> patch)? onApplyToEditor;
+  const _AiView({required this.projectId, required this.onApplied, required this.srsData, required this.formSections, this.onApplyToEditor});
 
   @override
   State<_AiView> createState() => _AiViewState();
@@ -3163,17 +3008,64 @@ class _AiViewState extends State<_AiView> {
   String? _error;
   String? _success;
   late final TextEditingController _promptCtrl;
+  // UI: subsection selection + detail level
+  final Set<String> _selectedSubsections = {};
+  String _detailLevel = 'estandar'; // 'breve' | 'estandar' | 'detallado'
+  // AI provider / options
+  String _provider = 'openai'; // 'openai' | 'gemini' | 'anthropic'
+
+  // Progress estimator
+  double _progress = 0.0; // 0.0 - 1.0
+  Timer? _progressTimer;
+  DateTime? _progressStart;
+  int _maxExpectedSeconds = 120;
+  String? _jobId;
+  String? _statusText;
+  Map<String, dynamic>? _lastResp;
 
   @override
   void initState() {
     super.initState();
     _promptCtrl = TextEditingController(text: _defaultAiPrompt);
+    // removed temporary api key and model inputs per UX request
   }
 
   @override
   void dispose() {
     _promptCtrl.dispose();
     super.dispose();
+  }
+
+  // Helper to extract a short human-friendly text from nested response.
+  // Prefer well-known keys like 'description', 'content', 'text', etc.
+  String? pickString(dynamic v) {
+    if (v == null) return null;
+    if (v is String) {
+      final s = v.trim();
+      return s.isEmpty ? null : s;
+    }
+    if (v is Map) {
+      // Preferred keys order
+      const preferred = ['description', 'content', 'text', 'result', 'message', 'generated_text', 'output'];
+      for (final k in preferred) {
+        if (v.containsKey(k)) {
+          final candidate = pickString(v[k]);
+          if (candidate != null) return candidate;
+        }
+      }
+      // Fallback: any string leaf
+      for (final e in v.entries) {
+        final r = pickString(e.value);
+        if (r != null) return r;
+      }
+    }
+    if (v is Iterable) {
+      for (final e in v) {
+        final r = pickString(e);
+        if (r != null) return r;
+      }
+    }
+    return null;
   }
 
   Future<void> _generate() async {
@@ -3193,13 +3085,130 @@ class _AiViewState extends State<_AiView> {
       }
 
       final prompt = _promptCtrl.text.trim().isEmpty ? _defaultAiPrompt : _promptCtrl.text.trim();
-      final payload = <String, dynamic>{'prompt': prompt, 'srs_data': Map<String, dynamic>.from(widget.srsData ?? {})};
-      final resp = await ApiService.aiGenerateFullSrs(widget.projectId, data: payload);
+      final baseData = Map<String, dynamic>.from(widget.srsData ?? {});
+
+      // Use class helper `pickString` to extract human-friendly text from responses.
+
+      // Build general payload pieces (map Spanish UI values to API expected values)
+      String _mapDetail(String v) {
+        final s = v.toString().toLowerCase().trim();
+        if (s == 'breve' || s == 'brief') return 'brief';
+        if (s == 'estandar' || s == 'estándar' || s == 'standard') return 'standard';
+        if (s == 'detallado' || s == 'detailed') return 'detailed';
+        return 'standard';
+      }
+
+      final mappedDetail = _mapDetail(_detailLevel);
+
+      // No client-side options required; server will use sensible defaults.
+
+      // If the user selected exactly one subsection, the backend expects
+      // a minimal payload like:
+      // { "section": "ruta.de.la.seccion", "prompt": "...", "provider": "openai" }
+      // Build that exact shape when one item selected.
+      Map<String, dynamic> singlePayload = {};
+      if (_selectedSubsections.length == 1) {
+        final sel = _selectedSubsections.first;
+        singlePayload = {
+          'section': sel,
+          'prompt': prompt,
+          'provider': _provider,
+        };
+        // model input removed by UX request
+      }
+
+      // For multiple selections or full generation, include richer payload.
+      final payload = <String, dynamic>{
+        'prompt': prompt,
+        'srs_data': baseData,
+        'detail_level': mappedDetail,
+        'provider': _provider,
+      };
+      // model input removed by UX request
+
+      if (_selectedSubsections.isNotEmpty && _selectedSubsections.length > 1) {
+        // Selected keys have format 'sectionId.subId'. Build parent sections and subIds.
+        final parents = <String>{};
+        final subIds = <String>[];
+        for (final key in _selectedSubsections) {
+          final parts = key.split('.');
+          if (parts.length >= 2) {
+            parents.add(parts.first);
+            subIds.add(parts.sublist(1).join('.'));
+          } else {
+            subIds.add(key);
+          }
+        }
+        payload['sections'] = parents.toList();
+        if (parents.length == 1) payload['section'] = parents.first;
+        payload['subsections'] = subIds;
+        if (subIds.length == 1) payload['subsection'] = subIds.first;
+      }
+
+      // Temporary API key and save-to-settings removed by UX request
+
+      // Start estimator while request is in-flight (no job id yet)
+      _startProgressEstimator(null);
+
+      Map<String, dynamic> resp;
+      // If user selected specific subsections, use section endpoint.
+      if (_selectedSubsections.isNotEmpty) {
+        if (_selectedSubsections.length == 1) {
+          resp = await ApiService.aiGenerateSrsSection(widget.projectId, singlePayload);
+        } else {
+          resp = await ApiService.aiGenerateSrsSection(widget.projectId, payload);
+        }
+      } else {
+        resp = await ApiService.aiGenerateFullSrs(widget.projectId, data: payload);
+      }
       // Debug: log raw response for troubleshooting
       try {
         // ignore: avoid_print
         print('AI generate response: $resp');
       } catch (_) {}
+
+      // Auto-apply responses that explicitly include a target `section` and `content`.
+      // Example: { section: 'introduction.purpose', content: { description: '...' } }
+      // Build a patch, call parent `onApplyToEditor` (which persists), and finish early.
+      if (resp['section'] != null && resp['content'] != null && resp['srs_data'] == null && resp['applied'] != true) {
+        try {
+          final sectionPath = resp['section'].toString();
+          final dynamic content = resp['content'];
+          final String? contentStr = pickString(content) ?? (content is Map && content['description'] is String ? content['description'] as String : null);
+
+          final patch = <String, dynamic>{};
+          void setAt(Map<String, dynamic> m, List<String> keys, dynamic value) {
+            if (keys.length == 1) {
+              m[keys.first] = value;
+              return;
+            }
+            final head = keys.first;
+            m[head] = Map<String, dynamic>.from(m[head] as Map? ?? {});
+            setAt(m[head] as Map<String, dynamic>, keys.sublist(1), value);
+          }
+
+          final keys = sectionPath.split('.');
+          setAt(patch, keys, contentStr ?? content);
+
+          // Stop progress while we apply
+          _stopProgressEstimator();
+
+          if (widget.onApplyToEditor != null) {
+            await widget.onApplyToEditor!(patch);
+            if (mounted) {
+              setState(() {
+                _lastResp = null;
+                _success = contentStr ?? 'Resultado aplicado y guardado.';
+                _loading = false;
+              });
+            }
+            await widget.onApplied();
+            return;
+          }
+        } catch (e) {
+          // ignore and continue to normal flow (show apply button)
+        }
+      }
 
       if (resp.isEmpty) {
         throw Exception('Respuesta vacía del servicio IA.');
@@ -3210,21 +3219,44 @@ class _AiViewState extends State<_AiView> {
       final bool immediateDone = resp['srs_data'] != null || resp['applied'] == true ||
           status == 'done' || status == 'finished' || status == 'completed';
 
+      // Start or stop progress estimator depending on whether the backend
+      // signaled immediate completion. If a job id exists and generation
+      // continues on the server, restart estimator with job id to poll history.
+      _jobId = resp['id']?.toString() ?? resp['task_id']?.toString() ?? resp['job_id']?.toString();
       if (!immediateDone) {
-        // try to extract job id if backend provided one
-        final jobId = resp['id']?.toString() ?? resp['task_id']?.toString() ?? resp['job_id']?.toString();
-        final completed = await _waitForCompletion(jobId: jobId, baselineUpdatedAt: baselineUpdatedAt);
+        _startProgressEstimator(_jobId);
+        final completed = await _waitForCompletion(jobId: _jobId, baselineUpdatedAt: baselineUpdatedAt);
         if (!completed) {
+          _stopProgressEstimator();
           throw Exception('No se confirmó la finalización de la generación IA en el tiempo esperado.');
         }
+      } else {
+        _stopProgressEstimator();
       }
 
       if (!mounted) return;
-      setState(() {
-        _success = 'SRS generado correctamente con IA. Recargando...';
-        _loading = false;
-      });
-      await widget.onApplied();
+      // If backend already applied the result, reload. Otherwise keep the
+      // response so user can apply it locally with a button.
+      // If backend already applied the result, reload. Otherwise keep the
+      // response so user can apply it locally with a button. If the response
+      // contains a human-readable message, surface it in the success box.
+      final String? humanText = pickString(resp['content'] ?? resp['result'] ?? resp['message'] ?? resp['text'] ?? resp['generated_text'] ?? resp['output'])
+          ?? (resp['srs_data'] is Map ? pickString(resp['srs_data']) : null);
+
+      if (resp['applied'] == true) {
+        setState(() {
+          _success = humanText ?? 'SRS generado y aplicado en el servidor. Recargando...';
+          _loading = false;
+          _lastResp = null;
+        });
+        await widget.onApplied();
+      } else {
+        setState(() {
+          _success = humanText ?? 'Generación lista. Revisa y aplica manualmente si lo deseas.';
+          _loading = false;
+          _lastResp = Map<String, dynamic>.from(resp);
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -3232,6 +3264,117 @@ class _AiViewState extends State<_AiView> {
         _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
+  }
+
+  /// Attempt to construct a minimal patch map from an AI response.
+  /// Returns a Map suitable to merge into the editor `_docData`, or null.
+  Map<String, dynamic>? _buildPatchFromResponse(Map<String, dynamic> resp) {
+    // Prefer explicit srs_data fragment
+    if (resp['srs_data'] is Map) return Map<String, dynamic>.from(resp['srs_data']);
+
+    // If single subsection selected, try to extract a text result and map to path
+    if (_selectedSubsections.length == 1) {
+      final sel = _selectedSubsections.first; // format sectionId.subId or full path
+      // Find content string in response
+      String? content;
+      for (final k in ['content', 'result', 'text', 'generated_text', 'output']) {
+        if (resp[k] is String) {
+          content = resp[k] as String;
+          break;
+        }
+      }
+      // Fallback: pick first string leaf in response (prefers description/content)
+      if (content == null) content = pickString(resp);
+      if (content == null) return null;
+
+      // Determine target path from formSections
+      final parts = sel.split('.');
+      final secId = parts.first;
+      final subId = parts.length > 1 ? parts.sublist(1).join('.') : null;
+      String? targetPath;
+      for (final sec in widget.formSections) {
+        if (sec == null) continue;
+        if ((sec['id'] ?? '').toString() != secId) continue;
+        for (final sub in (sec['subsections'] as List? ?? [])) {
+          final candidateId = (sub['id'] ?? sub['title'] ?? '').toString();
+          if (subId == null || candidateId == subId) {
+            if (sub['path'] != null) {
+              targetPath = sub['path'].toString();
+            } else {
+              final fieldsList = (sub['fields'] as List?) ?? [];
+              if (fieldsList.isNotEmpty) {
+                final f = fieldsList.first;
+                targetPath = (f['path'] ?? f['id']).toString();
+              }
+            }
+            break;
+          }
+        }
+        if (targetPath != null) break;
+      }
+      if (targetPath == null) return null;
+
+      // Build nested map from path
+      final patch = <String, dynamic>{};
+      void setAt(Map<String, dynamic> m, List<String> keys, String value) {
+        if (keys.length == 1) {
+          m[keys.first] = value;
+          return;
+        }
+        final head = keys.first;
+        m[head] = Map<String, dynamic>.from(m[head] as Map? ?? {});
+        setAt(m[head] as Map<String, dynamic>, keys.sublist(1), value);
+      }
+
+      setAt(patch, targetPath.split('.'), content);
+      return patch;
+    }
+
+    return null;
+  }
+
+  void _startProgressEstimator(String? jobId) {
+    _progressTimer?.cancel();
+    _progressStart = DateTime.now();
+    _progress = 0.02;
+    _jobId = jobId;
+    _statusText = 'Encolado';
+    _progressTimer = Timer.periodic(const Duration(seconds: 2), (t) async {
+      if (!mounted) return;
+      final elapsed = DateTime.now().difference(_progressStart!).inSeconds;
+      // If we have a jobId try to fetch history progress
+      if (_jobId != null) {
+        try {
+          final history = await ApiService.getProjectAiHistory(widget.projectId);
+          for (final entry in history) {
+            if (entry is Map<String, dynamic>) {
+              final id = (entry['id'] ?? entry['task_id'] ?? entry['job_id'])?.toString();
+              if (id != null && id == _jobId) {
+                if (entry['progress'] != null) {
+                  final p = double.tryParse(entry['progress'].toString()) ?? 0.0;
+                  if (mounted) setState(() => _progress = p.clamp(0.0, 1.0));
+                }
+                final st = (entry['status'] ?? entry['state'] ?? '').toString().toLowerCase();
+                if (st.isNotEmpty) {
+                  if (mounted) setState(() => _statusText = st);
+                }
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Estimator fallback: increase progress proportionally up to 90%
+      final estimated = (elapsed / _maxExpectedSeconds) * 0.9;
+      if (mounted) setState(() => _progress = _progress < estimated ? estimated.clamp(0.0, 0.9) : _progress);
+    });
+  }
+
+  void _stopProgressEstimator() {
+    _progressTimer?.cancel();
+    if (mounted) setState(() => _progress = 1.0);
+    _progressTimer = null;
   }
 
   Future<bool> _waitForCompletion({String? jobId, String? baselineUpdatedAt}) async {
@@ -3246,7 +3389,12 @@ class _AiViewState extends State<_AiView> {
               if (entry is Map<String, dynamic>) {
                 final id = (entry['id'] ?? entry['task_id'] ?? entry['job_id'])?.toString();
                 if (id != null && id == jobId) {
-                  final st = (entry['status'] ?? entry['state'] ?? '')?.toString().toLowerCase();
+                  final st = (entry['status'] ?? entry['state'] ?? '').toString().toLowerCase();
+                  // Update progress if backend provides progress field
+                  if (entry['progress'] != null) {
+                    final p = double.tryParse(entry['progress'].toString()) ?? 0.0;
+                    if (mounted) setState(() => _progress = p.clamp(0.0, 1.0));
+                  }
                   if (st == 'completed' || st == 'finished' || st == 'done' || entry['applied'] == true) return true;
                 }
               }
@@ -3326,6 +3474,126 @@ class _AiViewState extends State<_AiView> {
               ),
               const SizedBox(height: 12),
               const Text(
+                'Proveedor',
+                style: TextStyle(color: _textGrey, fontSize: 12.0, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  DropdownButton<String>(
+                    value: _provider,
+                    items: const [
+                      DropdownMenuItem(value: 'openai', child: Text('OpenAI')),
+                      DropdownMenuItem(value: 'gemini', child: Text('Gemini')),
+                      DropdownMenuItem(value: 'anthropic', child: Text('Anthropic')),
+                    ],
+                    onChanged: (v) => setState(() => _provider = v ?? 'openai'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // ── Subsecciones selector ─────────────────────────────────
+              const Text(
+                'Subsecciones a generar',
+                style: TextStyle(color: _textGrey, fontSize: 12.0, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Builder(builder: (ctx) {
+                final fs = widget.formSections;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final sec in fs) ...[
+                      if (sec != null) ...[
+                        Text(
+                          (sec['title'] ?? sec['id']).toString(),
+                          style: const TextStyle(color: _textGrey, fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: List<Widget>.from(
+                            (sec['subsections'] as List? ?? []).map((sub) {
+                              final secId = (sec['id'] ?? '').toString();
+                              final subId = (sub['id'] ?? sub['title'] ?? '').toString();
+                              final key = '$secId.$subId';
+                              final label = (sub['title'] ?? subId).toString();
+                              final selected = _selectedSubsections.contains(key);
+                              return ChoiceChip(
+                                label: Text(label),
+                                selected: selected,
+                                onSelected: (v) {
+                                  setState(() {
+                                    if (v)
+                                      _selectedSubsections.add(key);
+                                    else
+                                      _selectedSubsections.remove(key);
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ],
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setState(() => _selectedSubsections.clear());
+                          },
+                          child: const Text('Ninguna', style: TextStyle(color: _textGrey)),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () {
+                            final all = <String>{};
+                            for (final sec in fs) {
+                              for (final sub in (sec['subsections'] as List? ?? [])) {
+                                final secId = (sec['id'] ?? '').toString();
+                                final subId = (sub['id'] ?? sub['title'] ?? '').toString();
+                                if (secId.isNotEmpty && subId.isNotEmpty) all.add('$secId.$subId');
+                              }
+                            }
+                            setState(() => _selectedSubsections.addAll(all));
+                          },
+                          child: const Text('Todas', style: TextStyle(color: _textGrey)),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              }),
+              const SizedBox(height: 12),
+              const Text(
+                'Nivel de detalle',
+                style: TextStyle(color: _textGrey, fontSize: 12.0, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Breve'),
+                    selected: _detailLevel == 'breve',
+                    onSelected: (_) => setState(() => _detailLevel = 'breve'),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Estándar'),
+                    selected: _detailLevel == 'estandar',
+                    onSelected: (_) => setState(() => _detailLevel = 'estandar'),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Detallado'),
+                    selected: _detailLevel == 'detallado',
+                    onSelected: (_) => setState(() => _detailLevel = 'detallado'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
                 'Prompt (opcional)',
                 style: TextStyle(color: _textGrey, fontSize: 12.0, fontWeight: FontWeight.w600),
               ),
@@ -3382,9 +3650,60 @@ class _AiViewState extends State<_AiView> {
                   ),
                 ),
               ],
+              if (_lastResp != null) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _loading
+                            ? null
+                            : () async {
+                                // Try to build a patch and call parent callback
+                                try {
+                                  final patch = _buildPatchFromResponse(_lastResp!);
+                                  if (patch == null) {
+                                    setState(() => _error = 'No se encontró contenido aplicable en la respuesta IA.');
+                                    return;
+                                  }
+                                  if (widget.onApplyToEditor != null) {
+                                    await widget.onApplyToEditor!(patch);
+                                    setState(() {
+                                      _lastResp = null;
+                                      _success = 'Resultado aplicado al documento.';
+                                    });
+                                  } else {
+                                    setState(() => _error = 'Callback de aplicación no configurado.');
+                                  }
+                                } catch (e) {
+                                  setState(() => _error = 'Error al aplicar resultado: $e');
+                                }
+                              },
+                        child: const Text('Aplicar resultado al documento'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               if (_loading) ...[
                 const SizedBox(height: 12),
-                LinearProgressIndicator(color: _pink, minHeight: 6),
+                // Show determinate progress when we have a value, otherwise indeterminate
+                if (_progress > 0.0 && _progress < 1.0)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(value: _progress, color: _pink, minHeight: 6),
+                      const SizedBox(height: 6),
+                      Text(
+                        _statusText != null
+                            ? _statusText!
+                            : 'Progreso: ${( (_progress * 100).toStringAsFixed(0))}%',
+                        style: const TextStyle(color: _textGrey, fontSize: 12),
+                      ),
+                    ],
+                  )
+                else
+                  const LinearProgressIndicator(color: _pink, minHeight: 6),
               ],
               const SizedBox(height: 20),
               SizedBox(
@@ -3411,7 +3730,9 @@ class _AiViewState extends State<_AiView> {
                         )
                       : const Icon(Icons.auto_awesome_rounded, size: 18),
                   label: Text(
-                    _loading ? 'Generando...' : 'Generar SRS completo',
+                    _loading
+                      ? 'Generando...'
+                      : (_selectedSubsections.isNotEmpty ? 'Generar subsecciones seleccionadas' : 'Generar SRS completo'),
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 14,

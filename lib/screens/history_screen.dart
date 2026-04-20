@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fsdmovil/services/api_service.dart';
@@ -7,7 +6,8 @@ import 'package:fsdmovil/widgets/top_nav_menu.dart';
 import 'package:fsdmovil/screens/version_history_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  final bool embedded;
+  const HistoryScreen({super.key, this.embedded = false});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -58,21 +58,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
             if (v is Map) normalized.add(Map<String, dynamic>.from(v));
           }
 
-          // If there is more than one version, check for any consecutive
-          // pair that differ in `srs_data` (API returns newest-first).
-          for (var i = 0; i < normalized.length; i++) {
-            final curr = normalized[i];
-            final next = i + 1 < normalized.length ? normalized[i + 1] : null;
-            final cs = curr['srs_data'] == null ? '' : jsonEncode(curr['srs_data']);
-            final ns = next == null || next['srs_data'] == null ? '' : jsonEncode(next['srs_data']);
-            if (cs != ns) return p;
+          // Show any project that has at least one version with a label or srs_data.
+          // API may omit srs_data in list responses, so we rely on label presence too.
+          for (final v in normalized) {
+            final label = (v['version_name'] ?? v['label'] ?? '').toString().trim();
+            if (label.isNotEmpty) return p;
+            final srs = v['srs_data_snapshot'] ?? v['srs_data'];
+            if (srs is Map && srs.isNotEmpty) return p;
+            if (srs is String && srs.trim().isNotEmpty) return p;
           }
-
-          // Single-version projects: count as change only if srs_data is non-empty.
-          final first = normalized.first;
-          final firstSrs = first['srs_data'];
-          if (firstSrs is Map && firstSrs.isNotEmpty) return p;
-          if (firstSrs is String && firstSrs.trim().isNotEmpty) return p;
         } catch (_) {}
         return null;
       }).toList();
@@ -218,10 +212,65 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return int.tryParse(value.toString())?.clamp(0, 100) ?? 0;
   }
 
+  Widget _buildContent(BuildContext context) {
+    final items = filteredHistory;
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 60),
+        child: Center(child: CircularProgressIndicator(color: fsdPink)),
+      );
+    }
+    if (errorMessage != null) {
+      return _HistoryErrorState(
+        message: errorMessage!,
+        onRetry: () {
+          setState(() => loading = true);
+          loadHistory();
+        },
+      );
+    }
+    return ListView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      children: [
+        _HistorySearchBar(
+          currentValue: searchQuery,
+          onChanged: (value) => setState(() => searchQuery = value),
+        ),
+        const SizedBox(height: 16),
+        if (projects.isEmpty)
+          const _EmptyHistoryState()
+        else if (items.isEmpty)
+          const _NoHistoryResultsState()
+        else
+          Column(
+            children: items.map((project) {
+              final status = (project['status'] ?? '').toString();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: _HistoryCard(
+                  project: project,
+                  statusLabel: _formatStatusLabel(status),
+                  statusTextColor: _statusTextColor(status),
+                  statusBgColor: _statusBgColor(status),
+                  versionLabel: _formatVersion(project),
+                  updatedAtLabel: _formatDate(project['updated_at']),
+                  progressValue: _parseProgress(project['progress']),
+                  onOpenEditor: () => _openEditor(project['id'] as int),
+                  onOpenVersionHistory: () =>
+                      _openVersionHistory(project['id'] as int),
+                ),
+              );
+            }).toList(),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final items = filteredHistory;
-
+    if (widget.embedded) return _buildContent(context);
     return MainAppShell(
       insideShell: true,
       selectedItem: TopNavItem.history,
@@ -230,66 +279,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       titlePink: 'historial',
       description:
           'Consulta las últimas actualizaciones de tus documentos y proyectos SRS.',
-      child: loading
-          ? const Padding(
-              padding: EdgeInsets.only(top: 60),
-              child: Center(child: CircularProgressIndicator(color: fsdPink)),
-            )
-          : errorMessage != null
-          ? _HistoryErrorState(
-              message: errorMessage!,
-              onRetry: () {
-                setState(() => loading = true);
-                loadHistory();
-              },
-            )
-          : RefreshIndicator(
-              color: fsdPink,
-              onRefresh: loadHistory,
-              child: ListView(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: EdgeInsets.zero,
-                children: [
-                  _HistorySearchBar(
-                    currentValue: searchQuery,
-                    onChanged: (value) {
-                      setState(() {
-                        searchQuery = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  if (projects.isEmpty)
-                    const _EmptyHistoryState()
-                  else if (items.isEmpty)
-                    const _NoHistoryResultsState()
-                  else
-                    Column(
-                      children: items.map((project) {
-                        final status = (project['status'] ?? '').toString();
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: _HistoryCard(
-                            project: project,
-                            statusLabel: _formatStatusLabel(status),
-                            statusTextColor: _statusTextColor(status),
-                            statusBgColor: _statusBgColor(status),
-                            versionLabel: _formatVersion(project),
-                            updatedAtLabel: _formatDate(project['updated_at']),
-                            progressValue: _parseProgress(project['progress']),
-                            onOpenEditor: () =>
-                                _openEditor(project['id'] as int),
-                            onOpenVersionHistory: () =>
-                                _openVersionHistory(project['id'] as int),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                ],
-              ),
-            ),
+      child: _buildContent(context),
     );
   }
 }
