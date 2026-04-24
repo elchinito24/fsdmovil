@@ -233,16 +233,19 @@ html,body{width:100%;height:100%;background:__BG__;overflow:hidden}
 <script>
 var edgeMode=false,edgeSource=null,nodeCounter=0,viewOnly=false;
 function parseMermaid(code){
-  var nodes={},edges=[];
+  var nodes={},edges=[],positions={};
   var lines=code.split('\n').filter(function(l){
     return !l.trim().match(/^(graph|flowchart|stateDiagram|sequenceDiagram|classDiagram|erDiagram)/i);
   });
-  function cleanId(s){s=s.trim().replace(/^["']|["']$/g,'');var m=s.match(/^(\w+)[\[\(\{>]/);return m?m[1]:s.trim()||s;}
-  function cleanLabel(s){s=s.trim();var m=s.match(/^\w+[\[\(\{>]([^\]\)\}]*)[\]\)\}]$/);if(m)return m[1];m=s.match(/^["'](.*)["']$/);if(m)return m[1];return cleanId(s);}
+  function cleanId(s){s=s.trim().replace(/^["']|["']$/g,'');var m=s.match(/^([\w-]+)[\[\(\{>]/);return m?m[1]:s.trim()||s;}
+  function cleanLabel(s){s=s.trim();var m=s.match(/^[\w-]+[\[\(\{>]([^\]\)\}]*)[\]\)\}]$/);if(m){var inner=m[1].trim().replace(/^["']|["']$/g,'');return inner||cleanId(s);}m=s.match(/^["'](.*)["']$/);if(m)return m[1];return cleanId(s);}
   function ensureNode(raw){var id=cleanId(raw);if(!nodes[id])nodes[id]=cleanLabel(raw);return id;}
   lines.forEach(function(line){
     line=line.trim();
-    if(!line||line.indexOf('%%')===0)return;
+    if(!line)return;
+    var posMatch=line.match(/^%%pos:([\w-]+):(-?\d+):(-?\d+)$/);
+    if(posMatch){positions[posMatch[1]]={x:parseInt(posMatch[2]),y:parseInt(posMatch[3])};return;}
+    if(line.indexOf('%%')===0)return;
     var arrowIdx=line.indexOf('-->');
     if(arrowIdx===-1)arrowIdx=line.indexOf('->');
     if(arrowIdx!==-1){
@@ -258,14 +261,19 @@ function parseMermaid(code){
     }else{ensureNode(line);}
     nodeCounter=Math.max(nodeCounter,Object.keys(nodes).length);
   });
-  return{nodes:nodes,edges:edges};
+  return{nodes:nodes,edges:edges,positions:positions};
 }
 var initialCode=`''';
 
     const tail = r'''`;
 var parsed=parseMermaid(initialCode);
+var hasPositions=Object.keys(parsed.positions).length>0;
 var cyEls=[];
-Object.keys(parsed.nodes).forEach(function(id){cyEls.push({data:{id:id,label:parsed.nodes[id]||id}});});
+Object.keys(parsed.nodes).forEach(function(id){
+  var el={data:{id:id,label:parsed.nodes[id]||id}};
+  if(parsed.positions[id])el.position=parsed.positions[id];
+  cyEls.push(el);
+});
 parsed.edges.forEach(function(e,i){cyEls.push({data:{id:'e'+i,source:e.source,target:e.target,label:e.label}});});
 var cy=cytoscape({
   container:document.getElementById('cy'),
@@ -317,7 +325,7 @@ var cy=cytoscape({
     {selector:'edge.one-to-many',style:{'color':'#55A6FF','line-color':'#55A6FF','target-arrow-shape':'none','text-background-color':'#0F1017','text-background-opacity':1,'text-background-padding':'3px'}},
     {selector:'edge.many-to-many',style:{'color':'#F2A91D','line-color':'#F2A91D','target-arrow-shape':'none','text-background-color':'#0F1017','text-background-opacity':1,'text-background-padding':'3px'}}
   ],
-  layout:{name:'breadthfirst',directed:true,padding:20,spacingFactor:1.4},
+  layout:hasPositions?{name:'preset'}:{name:'breadthfirst',directed:true,padding:20,spacingFactor:1.4},
   userZoomingEnabled:true,userPanningEnabled:true,minZoom:0.2,maxZoom:4,
   autoungrabify:viewOnly,
 });
@@ -351,8 +359,9 @@ function addNodeOfType(shape,cls,defaultLabel){
   var id=(cls||'N')+nodeCounter;
   var el={data:{id:id,label:defaultLabel||'Nodo '+nodeCounter}};
   if(cls)el.classes=cls;
+  var ext=cy.extent();
+  el.position={x:(ext.x1+ext.x2)/2+(Math.random()*100-50),y:(ext.y1+ext.y2)/2+(Math.random()*100-50)};
   cy.add(el);
-  cy.layout({name:'breadthfirst',directed:true,padding:20}).run();
   emitCode();
 }
 function addEdgeOfType(style){
@@ -392,7 +401,9 @@ function emitCode(){
   cy.nodes().forEach(function(n){
     nodeIds[n.id()]=true;
     var lbl=n.data('label')||n.id();
-    lines.push(lbl===n.id()?'  '+n.id():'  '+n.id()+'["'+lbl+'"]');
+    var pos=n.position();
+    lines.push('  %%pos:'+n.id()+':'+Math.round(pos.x)+':'+Math.round(pos.y));
+    lines.push('  '+n.id()+'["'+lbl+'"]');
   });
   cy.edges().forEach(function(e){
     var src=e.data('source'),tgt=e.data('target'),lbl=e.data('label')||'';

@@ -6,7 +6,7 @@ import 'package:fsdmovil/providers/auth_provider.dart';
 import 'package:fsdmovil/widgets/app_logo.dart';
 
 const _pink = Color(0xFFE8365D);
-const _fieldBg = Color(0xFF1E2030);
+const _fieldBg = Color(0xFF2C2C2E);
 const _textGrey = Color(0xFF8E8E93);
 
 enum _PasswordStrength { none, weak, fair, good, strong }
@@ -216,20 +216,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       case _PasswordStrength.strong:
         return Colors.green;
       default:
-        return const Color(0xFF2A2D3A);
+        return _fieldBg;
     }
   }
 
   String _strengthLabel(_PasswordStrength s) {
     switch (s) {
       case _PasswordStrength.weak:
-        return 'Weak password';
+        return 'Débil';
       case _PasswordStrength.fair:
-        return 'Fair password';
+        return 'Aceptable';
       case _PasswordStrength.good:
-        return 'Good password';
+        return 'Buena';
       case _PasswordStrength.strong:
-        return 'Strong password';
+        return 'Fuerte';
       default:
         return '';
     }
@@ -479,7 +479,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 const SizedBox(height: 36),
 
                 const Text(
-                  'Start documenting',
+                  'Comienza a documentar',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 30,
@@ -487,7 +487,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                 ),
                 const Text(
-                  'better',
+                  'mejor',
                   style: TextStyle(
                     color: _pink,
                     fontSize: 30,
@@ -496,7 +496,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Join FSD, the premium SRS documentation platform.',
+                  'Únete a FSD, la plataforma premium de documentación SRS.',
                   style: TextStyle(color: _textGrey, fontSize: 14),
                 ),
                 const SizedBox(height: 32),
@@ -508,7 +508,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'First Name',
+                            'Nombre',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 13,
@@ -519,7 +519,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           TextField(
                             controller: _firstNameCtrl,
                             style: const TextStyle(color: Colors.white),
-                            decoration: _fieldDecoration('First Name'),
+                            decoration: _fieldDecoration('Nombre'),
                           ),
                         ],
                       ),
@@ -530,7 +530,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Last Name',
+                            'Apellido',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 13,
@@ -541,7 +541,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           TextField(
                             controller: _lastNameCtrl,
                             style: const TextStyle(color: Colors.white),
-                            decoration: _fieldDecoration('Last Name'),
+                            decoration: _fieldDecoration('Apellido'),
                           ),
                         ],
                       ),
@@ -551,7 +551,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 const SizedBox(height: 20),
 
                 const Text(
-                  'Email',
+                  'Correo electrónico',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 13,
@@ -563,12 +563,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                   style: const TextStyle(color: Colors.white),
-                  decoration: _fieldDecoration('name@company.com'),
+                  decoration: _fieldDecoration('nombre@empresa.com'),
                 ),
                 const SizedBox(height: 20),
 
                 const Text(
-                  'Password',
+                  'Contraseña',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 13,
@@ -615,7 +615,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     child: LinearProgressIndicator(
                       value: strengthValue,
                       minHeight: 4,
-                      backgroundColor: const Color(0xFF2A2D3A),
+                      backgroundColor: _fieldBg,
                       valueColor: AlwaysStoppedAnimation<Color>(strengthColor),
                     ),
                   ),
@@ -629,7 +629,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 const SizedBox(height: 20),
 
                 const Text(
-                  'Confirm Password',
+                  'Confirmar contraseña',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 13,
@@ -701,7 +701,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             ),
                           )
                         : const Text(
-                            'Create Account',
+                            'Crear cuenta',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -719,11 +719,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       text: const TextSpan(
                         children: [
                           TextSpan(
-                            text: 'Already have an account? ',
+                            text: '¿Ya tienes una cuenta? ',
                             style: TextStyle(color: _textGrey, fontSize: 14),
                           ),
                           TextSpan(
-                            text: 'Login',
+                            text: 'Inicia sesión',
                             style: TextStyle(
                               color: _pink,
                               fontSize: 14,
@@ -738,25 +738,24 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 const SizedBox(height: 24),
 
                 Center(
-                  child: RichText(
+                    child: RichText(
                     textAlign: TextAlign.center,
                     text: const TextSpan(
                       style: TextStyle(color: _textGrey, fontSize: 11),
                       children: [
                         TextSpan(
-                          text:
-                              'By clicking "Create Account", you agree to our ',
+                          text: 'Al hacer clic en "Crear cuenta", aceptas nuestros ',
                         ),
                         TextSpan(
-                          text: 'Terms of Service',
+                          text: 'Términos de servicio',
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        TextSpan(text: ' and\n'),
+                        TextSpan(text: ' y\n'),
                         TextSpan(
-                          text: 'Privacy Policy',
+                          text: 'Política de privacidad',
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,

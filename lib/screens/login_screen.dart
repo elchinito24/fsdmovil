@@ -161,7 +161,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       text: const TextSpan(
                         children: [
                           TextSpan(
-                            text: 'Welcome ',
+                            text: 'Bienvenido ',
                             style: TextStyle(
                               color: _pink,
                               fontSize: 34,
@@ -169,7 +169,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ),
                           TextSpan(
-                            text: 'back',
+                            text: 'de nuevo',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 34,
@@ -181,12 +181,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Log in to your FSD account to continue.',
+                      'Inicia sesión en tu cuenta FSD para continuar.',
                       style: TextStyle(color: _textGrey, fontSize: 14),
                     ),
                     const SizedBox(height: 36),
                     const Text(
-                      'Email',
+                      'Correo electrónico',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -199,7 +199,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       keyboardType: TextInputType.emailAddress,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        hintText: 'name@company.com',
+                        hintText: 'nombre@empresa.com',
                         hintStyle: const TextStyle(color: _textGrey),
                         filled: true,
                         fillColor: _fieldBg,
@@ -215,7 +215,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 20),
                     const Text(
-                      'Password',
+                      'Contraseña',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -260,7 +260,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: GestureDetector(
                         onTap: () {},
                         child: const Text(
-                          'Forgot Password?',
+                          '¿Olvidaste tu contraseña?',
                           style: TextStyle(color: _pink, fontSize: 13),
                         ),
                       ),
@@ -296,7 +296,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                               )
                             : const Text(
-                                'Log in',
+                                'Iniciar sesión',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -313,14 +313,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           text: const TextSpan(
                             children: [
                               TextSpan(
-                                text: "Don't have an account? ",
+                                text: '¿No tienes una cuenta? ',
                                 style: TextStyle(
                                   color: _textGrey,
                                   fontSize: 14,
                                 ),
                               ),
                               TextSpan(
-                                text: 'Sign up',
+                                text: 'Regístrate',
                                 style: TextStyle(
                                   color: _pink,
                                   fontSize: 14,
@@ -342,7 +342,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           child: Padding(
                             padding: EdgeInsets.symmetric(horizontal: 12),
                             child: Text(
-                              'OR CONTINUE WITH',
+                              'O CONTINUAR CON',
                               textAlign: TextAlign.center,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
